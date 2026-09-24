@@ -1,6 +1,17 @@
 // One-shot setup, safe to re-run: replica set, then one user per service with
 // access only to that service's database.
-const services = ['identity', 'tenant', 'org', 'access', 'audit', 'reference', 'notification'];
+const services = [
+  'identity',
+  'tenant',
+  'org',
+  'access',
+  'audit',
+  'reference',
+  'notification',
+  'config',
+  'records',
+  'files',
+];
 
 try {
   rs.status();

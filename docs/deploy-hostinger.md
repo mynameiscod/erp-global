@@ -55,7 +55,7 @@ apt install -y nginx certbot python3-certbot-nginx
 cat > /etc/nginx/sites-available/erp <<'EOF'
 server {
   server_name erp.example.com;
-  client_max_body_size 10m;
+  client_max_body_size 26m;
   location / {
     proxy_pass http://127.0.0.1:8080;
     proxy_set_header Host $host;

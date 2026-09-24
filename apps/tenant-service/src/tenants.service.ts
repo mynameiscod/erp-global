@@ -329,6 +329,10 @@ export class TenantsService {
       status: t.status,
       requireMfa: t.settings.requireMfa,
       defaultLanguage: t.defaultLanguage,
+      countryCode: t.countryCode,
+      industryCode: t.industryCode,
+      currency: t.currency,
+      locale: t.locale,
     };
   }
 }

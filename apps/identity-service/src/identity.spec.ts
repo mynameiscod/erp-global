@@ -23,6 +23,7 @@ import {
   TEST_INTERNAL_SECRET,
   type TestMongo,
 } from '@erp/testing';
+import { emptyLayer, platformBaseLayer, resolveEffective } from '@erp/metadata';
 import { AppModule } from './app.module';
 import { CLIENTS } from './config';
 
@@ -54,6 +55,35 @@ describe('identity-service', () => {
         if (!t) throw notFound();
         return t;
       },
+    },
+    config: {
+      effective: async () => ({
+        ...resolveEffective(
+          [platformBaseLayer()],
+          {
+            company: {
+              ...emptyLayer(),
+              entities: [
+                {
+                  key: 'user',
+                  fields: [
+                    {
+                      key: 'employee_code',
+                      type: 'text',
+                      label: { en: 'Employee code' },
+                      maxLength: 8,
+                    },
+                  ],
+                },
+              ],
+            },
+            orgUnits: {},
+          },
+          { version: 1, defaultFiscalYearStart: 4 },
+        ),
+        tenant: { countryCode: 'IN', currency: 'INR', locale: 'en-IN', defaultLanguage: 'en' },
+      }),
+      invalidate: () => undefined,
     },
     access: {
       get: async () => [
@@ -102,6 +132,7 @@ describe('identity-service', () => {
         JWT_PRIVATE_KEY: testKeys().privateKey,
         DATA_ENC_KEY: randomBytes(32).toString('base64'),
         ACCESS_SERVICE_URL: 'http://access.test',
+        CONFIG_SERVICE_URL: 'http://config.test',
         APP_URL: 'https://app.example.test',
         COOKIE_SECURE: 'false',
         PLATFORM_ADMIN_EMAIL: 'root@platform.test',
@@ -366,5 +397,34 @@ describe('identity-service', () => {
     } finally {
       tenants.alpha.status = 'active';
     }
+  });
+
+  it('validates and stores custom fields configured for users', async () => {
+    const auth = `Bearer ${(await login('alpha', 'admin@shared.test').expect(200)).body.accessToken}`;
+    const bad = await http()
+      .post('/api/v1/identity/users/invite')
+      .set('authorization', auth)
+      .send({
+        name: 'Kiran',
+        email: 'kiran@alpha.test',
+        custom: { employee_code: 'TOO-LONG-CODE', ghost: 1 },
+      })
+      .expect(400);
+    expect(bad.body.error.details.map((d: { path: string }) => d.path).sort()).toEqual([
+      'custom.employee_code',
+      'custom.ghost',
+    ]);
+    const ok = await http()
+      .post('/api/v1/identity/users/invite')
+      .set('authorization', auth)
+      .send({ name: 'Kiran', email: 'kiran@alpha.test', custom: { employee_code: ' E-101 ' } })
+      .expect(201);
+    expect(ok.body.custom).toEqual({ employee_code: 'E-101' });
+    const upd = await http()
+      .patch(`/api/v1/identity/users/${ok.body.id}`)
+      .set('authorization', auth)
+      .send({ name: 'Kiran K', custom: { employee_code: 'E-102' } })
+      .expect(200);
+    expect(upd.body).toMatchObject({ name: 'Kiran K', custom: { employee_code: 'E-102' } });
   });
 });

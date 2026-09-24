@@ -21,6 +21,9 @@ export const gatewayEnvSchema = z.object({
   ACCESS_SERVICE_URL: url,
   AUDIT_SERVICE_URL: url,
   REFERENCE_SERVICE_URL: url,
+  CONFIG_SERVICE_URL: url,
+  RECORDS_SERVICE_URL: url,
+  FILE_SERVICE_URL: url,
 });
 
 export type GatewayEnv = z.infer<typeof gatewayEnvSchema>;
@@ -52,6 +55,9 @@ export function routes(env: GatewayEnv): Route[] {
       service: 'reference-data-service',
       target: env.REFERENCE_SERVICE_URL,
     },
+    { prefixes: ['/api/v1/config'], service: 'config-service', target: env.CONFIG_SERVICE_URL },
+    { prefixes: ['/api/v1/records'], service: 'records-service', target: env.RECORDS_SERVICE_URL },
+    { prefixes: ['/api/v1/files'], service: 'file-service', target: env.FILE_SERVICE_URL },
   ];
 }
 
@@ -64,6 +70,8 @@ export const PUBLIC_ROUTES: { method: string; pattern: RegExp }[] = [
   { method: 'GET', pattern: /^\/api\/v1\/tenants\/(slug-available|lookup)\/[^/]+$/ },
   { method: 'GET', pattern: /^\/api\/v1\/reference(\/.*)?$/ },
   { method: '*', pattern: /^\/api\/v1\/identity\/auth(\/.*)?$/ },
+  // Signed, short-lived download links; file-service verifies the signature.
+  { method: 'GET', pattern: /^\/api\/v1\/files\/[0-9a-f-]{36}\/content$/ },
 ];
 
 /** Stricter limits on endpoints that attackers hammer. */

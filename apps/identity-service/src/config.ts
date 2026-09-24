@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { normalizePem } from '@erp/auth';
-import { baseEnvSchema, loadEnv, ServiceClient } from '@erp/service-kit';
+import { baseEnvSchema, ConfigClient, loadEnv, ServiceClient } from '@erp/service-kit';
 
 export const identityEnvSchema = baseEnvSchema.extend({
   JWT_PRIVATE_KEY: z.string().min(1).transform(normalizePem),
@@ -14,6 +14,7 @@ export const identityEnvSchema = baseEnvSchema.extend({
       'DATA_ENC_KEY must be 32 bytes, base64-encoded',
     ),
   ACCESS_SERVICE_URL: z.string().url(),
+  CONFIG_SERVICE_URL: z.string().url(),
   /** Public web app URL, used in invite and reset links. */
   APP_URL: z.string().url(),
   COOKIE_SECURE: z
@@ -33,6 +34,7 @@ export const CLIENTS = Symbol('CLIENTS');
 export interface Clients {
   tenant: Pick<ServiceClient, 'get'>;
   access: Pick<ServiceClient, 'get'>;
+  config: ConfigClient;
 }
 
 export function loadIdentityEnv(): IdentityEnv {
@@ -52,6 +54,14 @@ export function createClients(env: IdentityEnv): Clients {
       env.ACCESS_SERVICE_URL,
       'identity-service',
       env.INTERNAL_SECRET,
+    ),
+    config: new ConfigClient(
+      new ServiceClient(
+        'config-service',
+        env.CONFIG_SERVICE_URL,
+        'identity-service',
+        env.INTERNAL_SECRET,
+      ),
     ),
   };
 }

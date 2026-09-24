@@ -59,6 +59,9 @@ services:
       MONGO_PASSWORD_AUDIT: ${MONGO_PASSWORD_AUDIT}
       MONGO_PASSWORD_REFERENCE: ${MONGO_PASSWORD_REFERENCE}
       MONGO_PASSWORD_NOTIFICATION: ${MONGO_PASSWORD_NOTIFICATION}
+      MONGO_PASSWORD_CONFIG: ${MONGO_PASSWORD_CONFIG}
+      MONGO_PASSWORD_RECORDS: ${MONGO_PASSWORD_RECORDS}
+      MONGO_PASSWORD_FILES: ${MONGO_PASSWORD_FILES}
       MONGO_PASSWORD_PROVISIONER: ${MONGO_PASSWORD_PROVISIONER}
     command: >
       mongosh --quiet --host mongo -u root -p ${MONGO_ROOT_PASSWORD} --authenticationDatabase admin
@@ -86,6 +89,67 @@ services:
     volumes: [redis-data:/data]
     networks: [internal]
 
+  # S3-compatible storage for file and image fields. Internal only: files are served through file-service.
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: ['server', '/data']
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes: [minio-data:/data]
+    networks: [internal]
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  config-service:
+    <<: *service
+    build: { <<: *build, args: { APP: config-service } }
+    environment:
+      <<: *service-env
+      PORT: 3008
+      MONGO_URI: mongodb://svc_config:${MONGO_PASSWORD_CONFIG}@mongo:27017/?replicaSet=rs0&authSource=admin
+      MONGO_DB: erp_config
+      ORG_SERVICE_URL: http://org-service:3003
+
+  records-service:
+    <<: *service
+    build: { <<: *build, args: { APP: records-service } }
+    environment:
+      <<: *service-env
+      PORT: 3009
+      MONGO_URI: mongodb://svc_records:${MONGO_PASSWORD_RECORDS}@mongo:27017/?replicaSet=rs0&authSource=admin
+      MONGO_DB: erp_records
+      CONFIG_SERVICE_URL: http://config-service:3008
+      ORG_SERVICE_URL: http://org-service:3003
+      IDENTITY_SERVICE_URL: http://identity-service:3001
+      FILE_SERVICE_URL: http://file-service:3010
+
+  file-service:
+    <<: *service
+    build: { <<: *build, args: { APP: file-service } }
+    depends_on:
+      mongo-init:
+        condition: service_completed_successfully
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      <<: *service-env
+      PORT: 3010
+      MONGO_URI: mongodb://svc_files:${MONGO_PASSWORD_FILES}@mongo:27017/?replicaSet=rs0&authSource=admin
+      MONGO_DB: erp_files
+      STORAGE_DRIVER: s3
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: erp-files
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MAX_UPLOAD_MB: 25
+
   identity-service:
     <<: *service
     build: { <<: *build, args: { APP: identity-service } }
@@ -97,6 +161,7 @@ services:
       JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY}
       DATA_ENC_KEY: ${DATA_ENC_KEY}
       ACCESS_SERVICE_URL: http://access-service:3004
+      CONFIG_SERVICE_URL: http://config-service:3008
       APP_URL: ${APP_URL}
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       TRUST_PROXY_HOPS: 2
@@ -126,6 +191,7 @@ services:
       PORT: 3003
       MONGO_URI: mongodb://svc_org:${MONGO_PASSWORD_ORG}@mongo:27017/?replicaSet=rs0&authSource=admin
       MONGO_DB: erp_org
+      CONFIG_SERVICE_URL: http://config-service:3008
 
   access-service:
     <<: *service
@@ -137,6 +203,7 @@ services:
       MONGO_DB: erp_access
       ORG_SERVICE_URL: http://org-service:3003
       IDENTITY_SERVICE_URL: http://identity-service:3001
+      CONFIG_SERVICE_URL: http://config-service:3008
 
   audit-service:
     <<: *service
@@ -184,6 +251,9 @@ services:
         access-service,
         audit-service,
         reference-data-service,
+        config-service,
+        records-service,
+        file-service,
         redis,
       ]
     environment:
@@ -200,6 +270,9 @@ services:
       ACCESS_SERVICE_URL: http://access-service:3004
       AUDIT_SERVICE_URL: http://audit-service:3005
       REFERENCE_SERVICE_URL: http://reference-data-service:3006
+      CONFIG_SERVICE_URL: http://config-service:3008
+      RECORDS_SERVICE_URL: http://records-service:3009
+      FILE_SERVICE_URL: http://file-service:3010
 
   web:
     restart: unless-stopped
@@ -218,3 +291,4 @@ volumes:
   mongo-config:
   nats-data:
   redis-data:
+  minio-data:

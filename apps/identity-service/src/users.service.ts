@@ -10,10 +10,10 @@ import {
   type InviteUserInput,
 } from '@erp/contracts';
 import { OutboxWriter } from '@erp/events';
-import { AppError, MONGO_CONNECTION, paginate } from '@erp/service-kit';
+import { AppError, MONGO_CONNECTION, paginate, validateCustomFields } from '@erp/service-kit';
 import { requireContext, runAsTenant } from '@erp/tenancy';
 import { AuthService, INVITE_TTL_MS } from './auth.service';
-import { IDENTITY_ENV, type IdentityEnv } from './config';
+import { CLIENTS, IDENTITY_ENV, type Clients, type IdentityEnv } from './config';
 import { hashPassword } from './crypto';
 import { toUserDto, type User } from './models';
 
@@ -25,6 +25,7 @@ export class UsersService {
     private readonly auth: AuthService,
     @Inject(MONGO_CONNECTION) private readonly conn: Connection,
     @Inject(IDENTITY_ENV) private readonly env: IdentityEnv,
+    @Inject(CLIENTS) private readonly clients: Clients,
     private readonly outbox: OutboxWriter,
     private readonly log: PinoLogger,
   ) {}
@@ -85,6 +86,12 @@ export class UsersService {
     const existing = await Users.findOne({ email: input.email }).lean();
     if (existing && existing.status !== 'invited')
       throw AppError.conflict('A user with this email already exists');
+    const custom = await validateCustomFields(
+      this.clients.config,
+      'user',
+      input.custom,
+      existing?.custom,
+    );
 
     const user =
       existing ??
@@ -94,10 +101,48 @@ export class UsersService {
           name: input.name,
           status: 'invited',
           language: input.language ?? tenant.defaultLanguage,
+          custom,
         })
       ).toObject();
     await this.sendInvite(user, tenant.name ?? '');
     return toUserDto(user);
+  }
+
+  /** Admin edit: name, language, time zone and custom fields. */
+  async update(
+    id: string,
+    input: {
+      name?: string;
+      language?: string;
+      timezone?: string;
+      custom?: Record<string, unknown>;
+    },
+  ) {
+    const user = await this.load(id);
+    const set: Record<string, unknown> = {};
+    for (const k of ['name', 'language', 'timezone'] as const)
+      if (input[k] !== undefined) set[k] = input[k];
+    if (input.custom !== undefined) {
+      set.custom = await validateCustomFields(
+        this.clients.config,
+        'user',
+        input.custom,
+        user.custom ?? {},
+      );
+    }
+    const before = user as unknown as Record<string, unknown>;
+    const changes = Object.fromEntries(
+      Object.entries(set)
+        .filter(([k, v]) => JSON.stringify(before[k]) !== JSON.stringify(v))
+        .map(([k, v]) => [k, { from: before[k] ?? null, to: v }]),
+    );
+    if (!Object.keys(changes).length) return toUserDto(user);
+    const Users = await this.auth.users();
+    await this.conn.transaction(async (session) => {
+      await Users.updateOne({ _id: user._id }, { $set: set }, { session });
+      await this.outbox.record(EventTypes.UserUpdated, { userId: id, changes }, { session });
+    });
+    return this.get(id);
   }
 
   async resendInvite(id: string) {

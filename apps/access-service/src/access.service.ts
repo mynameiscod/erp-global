@@ -5,11 +5,13 @@ import {
   hasPermission,
   PERMISSIONS,
   scopePathsFor,
+  isRecordPermission,
+  RECORD_ACTIONS,
   TENANT_PERMISSION_KEYS,
+  type Permission,
   type AclEntry,
   type CreateAssignmentInput,
   type CreateRoleInput,
-  type PermissionKey,
 } from '@erp/contracts';
 import { OutboxWriter } from '@erp/events';
 import { AppError, MONGO_CONNECTION, TENANT_DATABASES, UpstreamError } from '@erp/service-kit';
@@ -18,10 +20,15 @@ import { CLIENTS, type Clients } from './clients';
 import { AssignmentModel, RoleModel, type Assignment, type Role } from './models';
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const READ_PERMISSIONS = TENANT_PERMISSION_KEYS.filter((k) => k.endsWith('.read'));
+/** Viewer: every read permission, including read access to every custom entity. */
+const READ_PERMISSIONS: Permission[] = [
+  ...TENANT_PERMISSION_KEYS.filter((k) => k.endsWith('.read')),
+  'records.*.read',
+];
 
-function effectivePermissions(role: Pick<Role, 'permissions' | 'allPermissions'>): PermissionKey[] {
-  return role.allPermissions ? [...TENANT_PERMISSION_KEYS] : role.permissions;
+/** Tenant Admin: every tenant permission, including full access to every custom entity. */
+function effectivePermissions(role: Pick<Role, 'permissions' | 'allPermissions'>): Permission[] {
+  return role.allPermissions ? [...TENANT_PERMISSION_KEYS, 'records.*.*'] : role.permissions;
 }
 
 function toRoleDto(r: Role, assignmentCount?: number) {
@@ -70,7 +77,7 @@ export class AccessService {
   }
 
   /** Nobody can hand out permissions they do not hold themselves at that place. */
-  private assertCanGrant(perms: PermissionKey[], path?: string): void {
+  private assertCanGrant(perms: Permission[], path?: string): void {
     const caller = this.caller();
     const missing = perms.filter((p) => !hasPermission(caller, p, path));
     if (missing.length) {
@@ -89,8 +96,39 @@ export class AccessService {
 
   // ---- catalog and roles ----
 
-  permissionCatalog() {
-    return PERMISSIONS.filter((p) => p.scope === 'tenant');
+  private async customEntities(): Promise<string[]> {
+    const list = await this.clients.config.get<{ key: string; kind: string }[]>(
+      '/internal/config/entities',
+    );
+    return list.filter((e) => e.kind === 'custom').map((e) => e.key);
+  }
+
+  /** Record permissions may only name custom entities that exist in published config. */
+  private async assertEntitiesExist(perms: Permission[]): Promise<void> {
+    const named = perms
+      .filter(isRecordPermission)
+      .map((p) => p.split('.')[1])
+      .filter((e) => e !== '*');
+    if (!named.length) return;
+    const known = new Set(await this.customEntities());
+    const unknown = [...new Set(named)].filter((e) => !known.has(e));
+    if (unknown.length)
+      throw AppError.badRequest(`Unknown entity in permissions: ${unknown.join(', ')}`);
+  }
+
+  /** Fixed permissions plus generated read/create/update/delete for each published custom entity. */
+  async permissionCatalog() {
+    const fixed = PERMISSIONS.filter((p) => p.scope === 'tenant').map((p) => ({ ...p }));
+    const entities = await this.customEntities().catch(() => [] as string[]);
+    const generated = entities.flatMap((entity) =>
+      RECORD_ACTIONS.map((action) => ({
+        key: `records.${entity}.${action}` as Permission,
+        module: `records:${entity}`,
+        scope: 'tenant' as const,
+        description: `${action[0].toUpperCase()}${action.slice(1)} ${entity} records`,
+      })),
+    );
+    return [...fixed, ...generated];
   }
 
   async listRoles() {
@@ -106,7 +144,8 @@ export class AccessService {
   }
 
   async createRole(input: CreateRoleInput) {
-    const permissions = [...new Set(input.permissions)] as PermissionKey[];
+    const permissions = [...new Set(input.permissions)] as Permission[];
+    await this.assertEntitiesExist(permissions);
     this.assertCanGrant(permissions);
     const Roles = await this.roles();
     const id = new Types.ObjectId();
@@ -134,7 +173,8 @@ export class AccessService {
     if (input.name !== undefined) set.name = input.name;
     if (input.description !== undefined) set.description = input.description;
     if (input.permissions !== undefined) {
-      const next = [...new Set(input.permissions)] as PermissionKey[];
+      const next = [...new Set(input.permissions)] as Permission[];
+      await this.assertEntitiesExist(next);
       // Adding or removing a permission changes what holders can do: the caller must hold both sets.
       this.assertCanGrant([...new Set([...next, ...role.permissions])]);
       set.permissions = next;

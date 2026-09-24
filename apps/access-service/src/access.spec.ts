@@ -64,6 +64,12 @@ describe('access-service', () => {
       },
     },
     identity: { get: async (path: string) => ({ id: path.split('/').pop(), status: 'active' }) },
+    config: {
+      get: async () => [
+        { key: 'user', kind: 'system' },
+        { key: 'student', kind: 'custom' },
+      ],
+    },
   };
 
   beforeAll(async () => {
@@ -251,5 +257,34 @@ describe('access-service', () => {
     );
     await sharedMemoryBus().idle();
     expect((await aclOf('tA', ALICE))[0].path).toBe(newNorthPath);
+  });
+
+  it('grants generated record permissions for published entities only', async () => {
+    const auth = await adminAuth('tA');
+    const acl = await aclOf('tA', ADMIN);
+    expect(acl[0].p).toContain('records.*.*');
+    const catalog = await http()
+      .get('/api/v1/access/permissions')
+      .set('authorization', auth)
+      .expect(200);
+    expect(catalog.body.map((p: { key: string }) => p.key)).toEqual(
+      expect.arrayContaining(['records.student.read', 'records.student.delete', 'config.publish']),
+    );
+    await http()
+      .post('/api/v1/access/roles')
+      .set('authorization', auth)
+      .send({ name: 'Admissions', permissions: ['records.student.read', 'records.student.create'] })
+      .expect(201);
+    const bad = await http()
+      .post('/api/v1/access/roles')
+      .set('authorization', auth)
+      .send({ name: 'Ghost', permissions: ['records.ghost.read'] })
+      .expect(400);
+    expect(bad.body.error.message).toBe('Unknown entity in permissions: ghost');
+    await http()
+      .post('/api/v1/access/roles')
+      .set('authorization', auth)
+      .send({ name: 'Typo', permissions: ['records.student.fly'] })
+      .expect(400);
   });
 });

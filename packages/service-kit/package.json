@@ -17,6 +17,7 @@
     "@erp/auth": "workspace:*",
     "@erp/contracts": "workspace:*",
     "@erp/events": "workspace:*",
+    "@erp/metadata": "workspace:*",
     "@erp/tenancy": "workspace:*",
     "helmet": "^8.1.0",
     "nestjs-pino": "^4.4.0",

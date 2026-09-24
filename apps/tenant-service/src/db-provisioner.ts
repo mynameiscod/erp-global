@@ -11,7 +11,16 @@ import { dedicatedDbName } from '@erp/tenancy';
  * Runs only when DB_ADMIN_URI is set (production). Without it (tests, local
  * development without auth) there is nothing to grant.
  */
-export const TENANT_DATA_SERVICES = ['identity', 'org', 'access', 'audit', 'notification'] as const;
+export const TENANT_DATA_SERVICES = [
+  'identity',
+  'org',
+  'access',
+  'audit',
+  'notification',
+  'config',
+  'records',
+  'files',
+] as const;
 
 @Injectable()
 export class DbProvisioner implements OnModuleDestroy {

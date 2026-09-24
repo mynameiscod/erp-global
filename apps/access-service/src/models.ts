@@ -1,5 +1,5 @@
 import { Schema, type Types } from 'mongoose';
-import type { PermissionKey } from '@erp/contracts';
+import type { Permission } from '@erp/contracts';
 import { tenantPlugin, type ModelDef } from '@erp/tenancy';
 
 export interface Role {
@@ -7,7 +7,7 @@ export interface Role {
   tenantId: string;
   name: string;
   description?: string;
-  permissions: PermissionKey[];
+  permissions: Permission[];
   /** System roles are created at sign-up and cannot be edited or deleted. */
   system: boolean;
   /** Tenant Admin: always holds every tenant permission, including ones added in later releases. */

@@ -34,3 +34,19 @@ describe('hasPermission', () => {
     expect(isPathInScope('/q/', ['/a/'])).toBe(false);
   });
 });
+
+describe('record permissions', () => {
+  it('matches wildcards segment by segment', () => {
+    const claims = {
+      acl: [
+        { ou: 'a', path: '/a/', p: ['records.*.read' as const] },
+        { ou: 'b', path: '/a/b/', p: ['records.student.*' as const] },
+      ],
+    };
+    expect(hasPermission(claims, 'records.vehicle.read')).toBe(true);
+    expect(hasPermission(claims, 'records.vehicle.create')).toBe(false);
+    expect(hasPermission(claims, 'records.student.delete', '/a/b/c/')).toBe(true);
+    expect(hasPermission(claims, 'records.student.delete', '/a/')).toBe(false);
+    expect(hasPermission(claims, 'org.unit.read')).toBe(false);
+  });
+});

@@ -13,6 +13,9 @@ import { AppModule as NotificationModule } from '../../../apps/notification-serv
 import { AppModule as OrgModule } from '../../../apps/org-service/src/app.module';
 import { AppModule as ReferenceModule } from '../../../apps/reference-data-service/src/app.module';
 import { AppModule as TenantModule } from '../../../apps/tenant-service/src/app.module';
+import { AppModule as ConfigModule } from '../../../apps/config-service/src/app.module';
+import { AppModule as RecordsModule } from '../../../apps/records-service/src/app.module';
+import { AppModule as FileModule } from '../../../apps/file-service/src/app.module';
 
 const SERVICES = [
   'identity',
@@ -22,6 +25,9 @@ const SERVICES = [
   'audit',
   'reference',
   'notification',
+  'config',
+  'records',
+  'file',
 ] as const;
 type ServiceName = (typeof SERVICES)[number];
 
@@ -33,6 +39,9 @@ const MODULES: Record<ServiceName, Type> = {
   audit: AuditModule,
   reference: ReferenceModule,
   notification: NotificationModule,
+  config: ConfigModule,
+  records: RecordsModule,
+  file: FileModule,
 };
 
 async function freePort(): Promise<number> {
@@ -73,6 +82,10 @@ export async function startStack(): Promise<Stack> {
     ORG_SERVICE_URL: url('org'),
     ACCESS_SERVICE_URL: url('access'),
     REFERENCE_SERVICE_URL: url('reference'),
+    CONFIG_SERVICE_URL: url('config'),
+    RECORDS_SERVICE_URL: url('records'),
+    FILE_SERVICE_URL: url('file'),
+    STORAGE_DRIVER: 'memory',
     JWT_PRIVATE_KEY: testKeys().privateKey,
     DATA_ENC_KEY: randomBytes(32).toString('base64'),
     APP_URL: 'https://app.e2e.test',
@@ -112,6 +125,9 @@ export async function startStack(): Promise<Stack> {
       ACCESS_SERVICE_URL: url('access'),
       AUDIT_SERVICE_URL: url('audit'),
       REFERENCE_SERVICE_URL: url('reference'),
+      CONFIG_SERVICE_URL: url('config'),
+      RECORDS_SERVICE_URL: url('records'),
+      FILE_SERVICE_URL: url('file'),
     }),
   );
   const server: Server = await new Promise((resolve) => {

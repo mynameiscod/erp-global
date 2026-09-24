@@ -16,6 +16,8 @@ export interface User {
   mfa: { enabled: boolean; secretEnc?: string; pendingSecretEnc?: string };
   /** Only for users of the platform tenant (Super Admins). */
   platformPermissions: PermissionKey[];
+  /** Values of custom fields added in the config studio. */
+  custom: Record<string, unknown>;
   failedLogins: number;
   lockedUntil?: Date;
   lastLoginAt?: Date;
@@ -38,12 +40,13 @@ const userSchema = new Schema<User>(
       pendingSecretEnc: String,
     },
     platformPermissions: { type: [String], default: [] },
+    custom: { type: Schema.Types.Mixed, default: {} },
     failedLogins: { type: Number, default: 0 },
     lockedUntil: Date,
     lastLoginAt: Date,
     passwordChangedAt: Date,
   },
-  { collection: 'users', timestamps: true, versionKey: false },
+  { collection: 'users', timestamps: true, versionKey: false, minimize: false },
 );
 userSchema.plugin(tenantPlugin);
 userSchema.index({ tenantId: 1, email: 1 }, { unique: true });
@@ -59,6 +62,7 @@ export function toUserDto(u: User) {
     language: u.language,
     timezone: u.timezone,
     mfaEnabled: u.mfa?.enabled ?? false,
+    custom: u.custom ?? {},
     lastLoginAt: u.lastLoginAt ?? null,
     createdAt: u.createdAt,
   };

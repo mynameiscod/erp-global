@@ -14,6 +14,7 @@
     "@erp/auth": "workspace:*",
     "@erp/contracts": "workspace:*",
     "@erp/events": "workspace:*",
+    "@erp/metadata": "workspace:*",
     "@erp/service-kit": "workspace:*",
     "@erp/tenancy": "workspace:*",
     "@nestjs/common": "^11.1.0",

@@ -48,6 +48,16 @@ export const EventTypes = {
   MfaDisabled: 'identity.mfa.disabled',
   PasswordChanged: 'identity.password.changed',
   PasswordResetRequested: 'identity.password.reset_requested',
+  UserUpdated: 'identity.user.updated',
+
+  ConfigPublished: 'config.published',
+  ConfigRolledBack: 'config.rolled_back',
+
+  RecordCreated: 'records.record.created',
+  RecordUpdated: 'records.record.updated',
+  RecordDeleted: 'records.record.deleted',
+
+  FileUploaded: 'files.file.uploaded',
 } as const;
 
 export type EventType = (typeof EventTypes)[keyof typeof EventTypes];
@@ -83,4 +93,12 @@ export interface OrgUnitMovedPayload {
   unitId: string;
   oldPath: string;
   newPath: string;
+}
+
+export interface ConfigPublishedPayload {
+  version: number;
+  note: string | null;
+  rolledBackFrom: number | null;
+  changes: number;
+  summary: string[];
 }

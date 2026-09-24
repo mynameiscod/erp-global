@@ -13,6 +13,8 @@ export interface OrgUnit {
   path: string;
   depth: number;
   status: 'active' | 'inactive';
+  /** Values of custom fields added in the config studio. */
+  custom: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -26,8 +28,9 @@ const schema = new Schema<OrgUnit>(
     path: { type: String, required: true },
     depth: { type: Number, required: true },
     status: { type: String, enum: ['active', 'inactive'], default: 'active' },
+    custom: { type: Schema.Types.Mixed, default: {} },
   },
-  { collection: 'org_units', timestamps: true, versionKey: false },
+  { collection: 'org_units', timestamps: true, versionKey: false, minimize: false },
 );
 schema.plugin(tenantPlugin);
 schema.index({ tenantId: 1, path: 1 }, { unique: true });
@@ -49,6 +52,7 @@ export function toOrgUnitDto(u: OrgUnit) {
     path: u.path,
     depth: u.depth,
     status: u.status,
+    custom: u.custom ?? {},
   };
 }
 export type OrgUnitDto = ReturnType<typeof toOrgUnitDto>;

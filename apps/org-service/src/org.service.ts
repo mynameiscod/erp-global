@@ -9,8 +9,14 @@ import {
   type PermissionKey,
 } from '@erp/contracts';
 import { OutboxWriter } from '@erp/events';
-import { AppError, MONGO_CONNECTION, TENANT_DATABASES } from '@erp/service-kit';
+import {
+  AppError,
+  MONGO_CONNECTION,
+  TENANT_DATABASES,
+  validateCustomFields,
+} from '@erp/service-kit';
 import { requireContext, type TenantDatabases } from '@erp/tenancy';
+import { CLIENTS, type Clients } from './clients';
 import { OrgUnitModel, toOrgUnitDto, type OrgUnit } from './org-unit.model';
 
 /** Deepest allowed hierarchy. Plenty for Group > Company > Region > ... > Team. */
@@ -37,6 +43,7 @@ export class OrgService {
     @Inject(TENANT_DATABASES) private readonly dbs: TenantDatabases,
     @Inject(MONGO_CONNECTION) private readonly conn: Connection,
     private readonly outbox: OutboxWriter,
+    @Inject(CLIENTS) private readonly clients: Clients,
   ) {}
 
   private units() {
@@ -95,6 +102,13 @@ export class OrgService {
     if (parent.depth + 1 >= MAX_DEPTH)
       throw AppError.badRequest(`Hierarchy cannot be deeper than ${MAX_DEPTH} levels`);
 
+    const custom = await validateCustomFields(
+      this.clients.config,
+      'org_unit',
+      input.custom,
+      undefined,
+      parent.path,
+    );
     const Units = await this.units();
     const id = new Types.ObjectId();
     const doc = {
@@ -106,6 +120,7 @@ export class OrgService {
       path: `${parent.path}${String(id)}/`,
       depth: parent.depth + 1,
       status: 'active' as const,
+      custom,
     };
     await this.conn.transaction(async (session) => {
       await Units.create([doc], { session }).catch((e: { code?: number }) => {
@@ -127,10 +142,22 @@ export class OrgService {
     return this.get(String(id));
   }
 
-  async update(id: string, patch: { name?: string; code?: string; type?: string }) {
+  async update(
+    id: string,
+    patch: { name?: string; code?: string; type?: string; custom?: Record<string, unknown> },
+  ) {
     const unit = await this.load(id);
     this.assertScope('org.unit.update', unit.path);
     const set = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
+    if (set.custom !== undefined) {
+      set.custom = await validateCustomFields(
+        this.clients.config,
+        'org_unit',
+        set.custom as Record<string, unknown>,
+        unit.custom ?? {},
+        unit.path,
+      );
+    }
     if (!Object.keys(set).length) return toOrgUnitDto(unit);
     const Units = await this.units();
     await this.conn.transaction(async (session) => {
@@ -255,6 +282,12 @@ export class OrgService {
 
   async internalGet(id: string) {
     const u = await this.load(id);
-    return { id: String(u._id), name: u.name, path: u.path, status: u.status };
+    return {
+      id: String(u._id),
+      name: u.name,
+      code: u.code ?? null,
+      path: u.path,
+      status: u.status,
+    };
   }
 }

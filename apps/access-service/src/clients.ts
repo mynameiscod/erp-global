@@ -4,6 +4,7 @@ import { baseEnvSchema, loadEnv, ServiceClient } from '@erp/service-kit';
 export const accessEnvSchema = baseEnvSchema.extend({
   ORG_SERVICE_URL: z.string().url(),
   IDENTITY_SERVICE_URL: z.string().url(),
+  CONFIG_SERVICE_URL: z.string().url(),
 });
 
 export const CLIENTS = Symbol('CLIENTS');
@@ -11,6 +12,7 @@ export const CLIENTS = Symbol('CLIENTS');
 export interface Clients {
   org: Pick<ServiceClient, 'get'>;
   identity: Pick<ServiceClient, 'get'>;
+  config: Pick<ServiceClient, 'get'>;
 }
 
 export function createClients(): Clients {
@@ -25,6 +27,12 @@ export function createClients(): Clients {
     identity: new ServiceClient(
       'identity-service',
       env.IDENTITY_SERVICE_URL,
+      'access-service',
+      env.INTERNAL_SECRET,
+    ),
+    config: new ServiceClient(
+      'config-service',
+      env.CONFIG_SERVICE_URL,
       'access-service',
       env.INTERNAL_SECRET,
     ),

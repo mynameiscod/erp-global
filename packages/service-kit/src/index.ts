@@ -8,3 +8,5 @@ export * from './placement';
 export * from './core.module';
 export * from './bootstrap';
 export * from './pagination';
+export * from './config-client';
+export * from './custom-fields';

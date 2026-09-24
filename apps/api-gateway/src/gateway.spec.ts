@@ -34,7 +34,17 @@ describe('api-gateway', () => {
     `Bearer ${signAccessToken({ sub: 'u1', tid: 't1', sid: 's1', acl: [] }, testKeys().privateKey, 300)}`;
 
   beforeAll(async () => {
-    const names = ['identity', 'tenant', 'org', 'access', 'audit', 'reference'];
+    const names = [
+      'identity',
+      'tenant',
+      'org',
+      'access',
+      'audit',
+      'reference',
+      'config',
+      'records',
+      'files',
+    ];
     const ups = await Promise.all(names.map(echoServer));
     servers.push(...ups.map((u) => u.server));
     const url = Object.fromEntries(names.map((n, i) => [n, ups[i].url]));
@@ -48,6 +58,9 @@ describe('api-gateway', () => {
       ACCESS_SERVICE_URL: url.access,
       AUDIT_SERVICE_URL: url.audit,
       REFERENCE_SERVICE_URL: 'http://127.0.0.1:9',
+      CONFIG_SERVICE_URL: url.config,
+      RECORDS_SERVICE_URL: url.records,
+      FILE_SERVICE_URL: url.files,
     });
     gateway = createGateway(env);
   });
@@ -62,6 +75,9 @@ describe('api-gateway', () => {
       ['/api/v1/identity/me', 'identity'],
       ['/api/v1/tenants/current', 'tenant'],
       ['/api/v1/platform/tenants', 'tenant'],
+      ['/api/v1/config/effective', 'config'],
+      ['/api/v1/records/student', 'records'],
+      ['/api/v1/files/abc', 'files'],
     ];
     for (const [path, service] of cases) {
       const res = await request(gateway).get(path).set('authorization', token()).expect(200);
@@ -79,6 +95,10 @@ describe('api-gateway', () => {
     await request(gateway).get('/api/v1/tenants/lookup/acme').expect(200);
     await request(gateway).post('/api/v1/identity/auth/refresh').expect(200);
     await request(gateway).get('/api/v1/tenants/current').expect(401);
+    await request(gateway)
+      .get('/api/v1/files/123e4567-e89b-12d3-a456-426614174000/content')
+      .expect(200);
+    await request(gateway).get('/api/v1/files/123e4567-e89b-12d3-a456-426614174000').expect(401);
   });
 
   it('never exposes internal routes or unknown paths', async () => {

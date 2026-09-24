@@ -18,6 +18,7 @@ import { z } from 'zod';
 import { Internal, Public, RequirePermissions } from '@erp/auth';
 import {
   acceptInviteSchema,
+  adminUpdateUserSchema,
   changePasswordSchema,
   emailSchema,
   inviteUserSchema,
@@ -226,6 +227,16 @@ export class UsersController {
   @ApiZodBody(inviteUserSchema)
   invite(@Body(new ZodPipe(inviteUserSchema)) body: InviteUserInput) {
     return this.users.invite(body);
+  }
+
+  @Patch(':id')
+  @RequirePermissions('identity.user.manage')
+  @ApiZodBody(adminUpdateUserSchema)
+  update(
+    @Param('id') id: string,
+    @Body(new ZodPipe(adminUpdateUserSchema)) body: z.infer<typeof adminUpdateUserSchema>,
+  ) {
+    return this.users.update(id, body);
   }
 
   @Post(':id/resend-invite')

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { INDUSTRY_CODES } from './reference';
-import { PERMISSIONS } from './permissions';
+import { isPermission } from './permissions';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -32,7 +32,8 @@ export const languageSchema = z
 export const timezoneSchema = z.string().min(1).max(64);
 export const objectIdSchema = z.string().regex(/^[a-f0-9]{24}$/, 'Invalid id');
 
-const permissionKeySchema = z.enum(PERMISSIONS.map((p) => p.key) as [string, ...string[]]);
+/** A fixed permission key, or a generated record permission such as `records.student.read`. */
+const permissionKeySchema = z.string().refine((v) => isPermission(v), 'Unknown permission');
 
 // ---- tenant ----
 export const signupSchema = z.object({
@@ -81,10 +82,14 @@ export const mfaLoginSchema = z.object({
 });
 export const mfaCodeSchema = z.object({ code: z.string().regex(/^\d{6}$/) });
 
+/** Values for fields a company added in the config studio; validated against the published config. */
+export const customValuesSchema = z.record(z.string().max(40), z.unknown());
+
 export const inviteUserSchema = z.object({
   name: z.string().trim().min(1).max(120),
   email: emailSchema,
   language: languageSchema.optional(),
+  custom: customValuesSchema.optional(),
 });
 export type InviteUserInput = z.infer<typeof inviteUserSchema>;
 
@@ -105,6 +110,15 @@ export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),
   newPassword: passwordSchema,
 });
+export const adminUpdateUserSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120),
+    language: languageSchema,
+    timezone: timezoneSchema,
+    custom: customValuesSchema,
+  })
+  .partial();
+
 export const updateProfileSchema = z
   .object({
     name: z.string().trim().min(1).max(120),
@@ -120,6 +134,7 @@ export const createOrgUnitSchema = z.object({
   code: z.string().trim().max(40).optional(),
   /** Label chosen by the client, e.g. Company, Region, Branch, Campus, Department. */
   type: z.string().trim().min(1).max(40),
+  custom: customValuesSchema.optional(),
 });
 export type CreateOrgUnitInput = z.infer<typeof createOrgUnitSchema>;
 
@@ -128,6 +143,7 @@ export const updateOrgUnitSchema = z
     name: z.string().trim().min(1).max(120),
     code: z.string().trim().max(40),
     type: z.string().trim().min(1).max(40),
+    custom: customValuesSchema,
   })
   .partial();
 

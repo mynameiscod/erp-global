@@ -12,7 +12,9 @@ import {
   TEST_INTERNAL_SECRET,
   type TestMongo,
 } from '@erp/testing';
+import { emptyLayer, platformBaseLayer, resolveEffective } from '@erp/metadata';
 import { AppModule } from './app.module';
+import { CLIENTS } from './clients';
 
 const ALL: PermissionKey[] = [
   'org.unit.read',
@@ -37,10 +39,37 @@ describe('org-service', () => {
 
   beforeAll(async () => {
     mongo = await startMongo();
-    Object.assign(process.env, serviceTestEnv(mongo.uri, 'erp_org_test'));
+    Object.assign(
+      process.env,
+      serviceTestEnv(mongo.uri, 'erp_org_test', { CONFIG_SERVICE_URL: 'http://config.test' }),
+    );
+    const config = {
+      effective: async (orgPath?: string) => ({
+        ...resolveEffective(
+          [platformBaseLayer()],
+          {
+            company: {
+              ...emptyLayer(),
+              entities: [
+                {
+                  key: 'org_unit',
+                  fields: [{ key: 'capacity', type: 'integer', label: { en: 'Capacity' }, min: 0 }],
+                },
+              ],
+            },
+            orgUnits: {},
+          },
+          { version: 1, orgPath, defaultFiscalYearStart: 4 },
+        ),
+        tenant: { countryCode: 'IN', currency: 'INR', locale: 'en-IN', defaultLanguage: 'en' },
+      }),
+      invalidate: () => undefined,
+    };
     const ref = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(PLACEMENT_RESOLVER)
       .useClass(SharedPlacementResolver)
+      .overrideProvider(CLIENTS)
+      .useValue({ config })
       .compile();
     app = ref.createNestApplication();
     await app.init();
@@ -212,5 +241,39 @@ describe('org-service', () => {
       .set('authorization', admin('tB'))
       .send(body('tB'))
       .expect(201);
+  });
+
+  it('validates custom fields configured for org units', async () => {
+    const auth = admin('tA');
+    const bad = await http()
+      .post('/api/v1/org/units')
+      .set('authorization', auth)
+      .send({
+        parentId: roots.tA.rootUnitId,
+        name: 'Hall',
+        type: 'Campus',
+        custom: { capacity: -5 },
+      })
+      .expect(400);
+    expect(bad.body.error.details).toEqual([
+      { path: 'custom.capacity', message: 'Must be at least 0' },
+    ]);
+    const ok = await http()
+      .post('/api/v1/org/units')
+      .set('authorization', auth)
+      .send({
+        parentId: roots.tA.rootUnitId,
+        name: 'Hall',
+        type: 'Campus',
+        custom: { capacity: '250' },
+      })
+      .expect(201);
+    expect(ok.body.custom).toEqual({ capacity: 250 });
+    const upd = await http()
+      .patch(`/api/v1/org/units/${ok.body.id}`)
+      .set('authorization', auth)
+      .send({ custom: { capacity: 300 } })
+      .expect(200);
+    expect(upd.body.custom).toEqual({ capacity: 300 });
   });
 });
