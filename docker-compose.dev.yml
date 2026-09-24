@@ -1,0 +1,41 @@
+# Infrastructure only, for local development with `pnpm dev`.
+#   docker compose -f docker-compose.dev.yml up -d
+# MongoDB runs as a single-node replica set (needed for transactions), without auth, on localhost only.
+services:
+  mongo:
+    image: mongo:7.0
+    command: ['--replSet', 'rs0', '--bind_ip_all']
+    ports: ['127.0.0.1:27017:27017']
+    volumes: [dev-mongo:/data/db]
+    healthcheck:
+      # Initiates the replica set on first start; afterwards just reports status.
+      test:
+        [
+          'CMD',
+          'mongosh',
+          '--quiet',
+          '--eval',
+          "try { rs.status().ok } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'localhost:27017' }] }).ok }",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  nats:
+    image: nats:2.10-alpine
+    command: ['-js', '-sd', '/data', '-m', '8222']
+    ports: ['127.0.0.1:4222:4222', '127.0.0.1:8222:8222']
+    volumes: [dev-nats:/data]
+
+  redis:
+    image: redis:7-alpine
+    ports: ['127.0.0.1:6379:6379']
+
+  # Catches all outgoing email. Web UI: http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:latest
+    ports: ['127.0.0.1:1025:1025', '127.0.0.1:8025:8025']
+
+volumes:
+  dev-mongo:
+  dev-nats:

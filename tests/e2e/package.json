@@ -1,0 +1,31 @@
+{
+  "name": "@erp/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "jest --runInBand"
+  },
+  "devDependencies": {
+    "@erp/access-service": "workspace:*",
+    "@erp/api-gateway": "workspace:*",
+    "@erp/audit-service": "workspace:*",
+    "@erp/contracts": "workspace:*",
+    "@erp/identity-service": "workspace:*",
+    "@erp/notification-service": "workspace:*",
+    "@erp/org-service": "workspace:*",
+    "@erp/reference-data-service": "workspace:*",
+    "@erp/service-kit": "workspace:*",
+    "@erp/tenancy": "workspace:*",
+    "@erp/tenant-service": "workspace:*",
+    "@erp/testing": "workspace:*",
+    "@nestjs/common": "^11.1.0",
+    "@types/jest": "^29.5.14",
+    "@types/supertest": "^6.0.2",
+    "jest": "^29.7.0",
+    "mongoose": "^8.18.0",
+    "otplib": "^12.0.1",
+    "supertest": "^7.1.0",
+    "ts-jest": "^29.4.0"
+  }
+}

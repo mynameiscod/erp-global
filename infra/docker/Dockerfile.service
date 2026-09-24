@@ -1,0 +1,27 @@
+# syntax=docker/dockerfile:1.7
+# One image recipe for every backend service: docker build --build-arg APP=org-service ...
+FROM node:22-slim AS base
+ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH \
+    MONGOMS_DISABLE_POSTINSTALL=1 \
+    CI=true
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
+WORKDIR /repo
+
+FROM base AS build
+ARG APP
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc turbo.json tsconfig.base.json ./
+COPY packages ./packages
+COPY apps ./apps
+COPY tests ./tests
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
+RUN pnpm turbo run build --filter=@erp/${APP}...
+RUN pnpm deploy --filter=@erp/${APP} --prod /out && rm -rf /out/src /out/*.spec.*
+
+FROM node:22-slim AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=build --chown=node:node /out ./
+USER node
+HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=5 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+CMD ["node", "dist/main.js"]
