@@ -2,10 +2,11 @@ import { countries as countryList } from 'countries-list';
 import type { CountryDto, CurrencyDto } from '@erp/contracts';
 
 // The package ships CommonJS at runtime but declares its types as ESM only.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const ct: typeof import('countries-and-timezones', {
+type CountriesAndTimezones = typeof import('countries-and-timezones', {
   with: { 'resolution-mode': 'import' },
-}) = require('countries-and-timezones');
+});
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const ct: CountriesAndTimezones = require('countries-and-timezones');
 
 /**
  * Country basics for every ISO country, built from open data plus the ICU
