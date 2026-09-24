@@ -13,23 +13,23 @@ in English, Hindi and Arabic (RTL), Docker and CI. See [docs/architecture.md](do
 
 ## What's inside
 
-| Path | What it is |
-|---|---|
-| `apps/api-gateway` | The only public API entry point: edge auth, rate limiting, routing |
-| `apps/identity-service` | Users, login, TOTP 2FA, sessions, invites, password reset |
-| `apps/tenant-service` | Company sign-up (saga), settings, platform admin, data placement |
-| `apps/org-service` | Org hierarchy of any depth (Group > Company > Region > Branch > …) |
-| `apps/access-service` | Roles, permissions, assignments scoped to org units |
-| `apps/audit-service` | Tamper-evident, per-tenant hash-chained audit log |
-| `apps/reference-data-service` | Countries (~250), currencies, languages, time zones |
-| `apps/notification-service` | Email in the user's language (SMTP) |
-| `apps/web` | React + Bootstrap + AG Grid + React Hook Form; i18n with RTL |
-| `packages/contracts` | Shared types, permission catalog, event types, zod schemas (used by API and UI) |
-| `packages/tenancy` | Request context + Mongoose tenant plugin (fails closed) + dedicated-DB routing |
-| `packages/auth` | JWT (RS256 user, HS256 service) and NestJS guards |
-| `packages/events` | Transactional outbox, NATS JetStream bus, idempotent consumers |
-| `packages/service-kit` | Shared NestJS bootstrap: config, context, DB, events, errors, logs, health, OpenAPI |
-| `tests/e2e` | Step 1 acceptance test: every service + gateway, Tenant A vs Tenant B |
+| Path                          | What it is                                                                          |
+| ----------------------------- | ----------------------------------------------------------------------------------- |
+| `apps/api-gateway`            | The only public API entry point: edge auth, rate limiting, routing                  |
+| `apps/identity-service`       | Users, login, TOTP 2FA, sessions, invites, password reset                           |
+| `apps/tenant-service`         | Company sign-up (saga), settings, platform admin, data placement                    |
+| `apps/org-service`            | Org hierarchy of any depth (Group > Company > Region > Branch > …)                  |
+| `apps/access-service`         | Roles, permissions, assignments scoped to org units                                 |
+| `apps/audit-service`          | Tamper-evident, per-tenant hash-chained audit log                                   |
+| `apps/reference-data-service` | Countries (~250), currencies, languages, time zones                                 |
+| `apps/notification-service`   | Email in the user's language (SMTP)                                                 |
+| `apps/web`                    | React + Bootstrap + AG Grid + React Hook Form; i18n with RTL                        |
+| `packages/contracts`          | Shared types, permission catalog, event types, zod schemas (used by API and UI)     |
+| `packages/tenancy`            | Request context + Mongoose tenant plugin (fails closed) + dedicated-DB routing      |
+| `packages/auth`               | JWT (RS256 user, HS256 service) and NestJS guards                                   |
+| `packages/events`             | Transactional outbox, NATS JetStream bus, idempotent consumers                      |
+| `packages/service-kit`        | Shared NestJS bootstrap: config, context, DB, events, errors, logs, health, OpenAPI |
+| `tests/e2e`                   | Step 1 acceptance test: every service + gateway, Tenant A vs Tenant B               |
 
 ## Local development
 

@@ -30,10 +30,10 @@ chmod 600 .env.production
 
 Edit `.env.production`:
 
-| Setting | Set it to |
-|---|---|
-| `APP_URL` | `https://erp.example.com` |
-| `PLATFORM_ADMIN_EMAIL` | your email (Super Admin, sign in with company `platform`) |
+| Setting                                                                        | Set it to                                                        |
+| ------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| `APP_URL`                                                                      | `https://erp.example.com`                                        |
+| `PLATFORM_ADMIN_EMAIL`                                                         | your email (Super Admin, sign in with company `platform`)        |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | your Hostinger mailbox, e.g. `smtp.hostinger.com`, `465`, `true` |
 
 Keep a secure copy of this file. Its keys decrypt 2FA secrets and sign logins.
