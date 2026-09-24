@@ -74,8 +74,14 @@ export class RecordsController {
   }
 
   @Get('lookup')
-  lookup(@Param('entity') entity: string, @Query('q') q?: string) {
-    return this.records.lookup(entityOf(entity), q?.slice(0, 100));
+  @ApiQuery({ name: 'q', required: false })
+  @ApiQuery({ name: 'ids', required: false, description: 'Comma-separated record ids' })
+  lookup(@Param('entity') entity: string, @Query('q') q?: string, @Query('ids') ids?: string) {
+    const list = ids
+      ?.split(',')
+      .filter((id) => /^[a-f0-9]{24}$/.test(id))
+      .slice(0, 100);
+    return this.records.lookup(entityOf(entity), q?.slice(0, 100), list?.length ? list : undefined);
   }
 
   @Get(':id')

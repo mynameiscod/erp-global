@@ -7,9 +7,20 @@ One configurable cloud ERP for any industry and any country, built as TypeScript
 Core platform + Country Pack + Industry Pack + Client config (System Admin) = the client's ERP
 ```
 
-**Status:** Step 1 (platform foundation) is done: multi-tenancy, a custom org hierarchy, identity and 2FA,
-roles scoped to org units, a hash-chained audit log, reference data for every country, the web app
-in English, Hindi and Arabic (RTL), Docker and CI. See [docs/architecture.md](docs/architecture.md).
+**Status:**
+
+- **Step 1 (platform foundation) is done.** It covers:
+  - multi-tenancy
+  - a custom org hierarchy
+  - identity and 2FA
+  - roles scoped to org units
+  - a hash-chained audit log
+  - reference data for every country
+  - the web app in English, Hindi and Arabic (RTL)
+  - Docker and CI
+- **Step 2 (config engine) is done.** A System Admin can create entities, fields of 21 types, forms, lists, option lists and number series, with branch overrides, draft, publish and rollback. No developer is needed.
+
+See [docs/architecture.md](docs/architecture.md) and [docs/step-2-config-engine.md](docs/step-2-config-engine.md).
 
 ## What's inside
 
@@ -23,7 +34,11 @@ in English, Hindi and Arabic (RTL), Docker and CI. See [docs/architecture.md](do
 | `apps/audit-service`          | Tamper-evident, per-tenant hash-chained audit log                                   |
 | `apps/reference-data-service` | Countries (~250), currencies, languages, time zones                                 |
 | `apps/notification-service`   | Email in the user's language (SMTP)                                                 |
+| `apps/config-service`         | Config studio backend: drafts, publish, versions, rollback, overrides, numbering    |
+| `apps/records-service`        | Data of custom entities: validation, formulas, lookups, unique values, auto-numbers |
+| `apps/file-service`           | File and image fields: uploads, signed download links, S3/SeaweedFS storage         |
 | `apps/web`                    | React + Bootstrap + AG Grid + React Hook Form; i18n with RTL                        |
+| `packages/metadata`           | Config model, formula language, layer merging, publish checks, record validation    |
 | `packages/contracts`          | Shared types, permission catalog, event types, zod schemas (used by API and UI)     |
 | `packages/tenancy`            | Request context + Mongoose tenant plugin (fails closed) + dedicated-DB routing      |
 | `packages/auth`               | JWT (RS256 user, HS256 service) and NestJS guards                                   |

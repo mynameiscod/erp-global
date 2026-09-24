@@ -13,6 +13,7 @@ import { useAuth } from '../auth/AuthContext';
 import { DataGrid } from '../components/DataGrid';
 import { applyFieldErrors, ErrorAlert, Field, PageHeader, StatusBadge } from '../components/ui';
 import { formatDateTime } from '../lib/format';
+import { CustomFields, customFieldErrors } from '../records/CustomFields';
 
 export function UsersPage() {
   const { t, i18n } = useTranslation();
@@ -126,19 +127,27 @@ function InviteDialog({
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
   const [error, setError] = useState<unknown>(null);
+  const [custom, setCustom] = useState<Record<string, unknown>>({});
+  const [customErrors, setCustomErrors] = useState<Record<string, string>>({});
   const form = useForm<z.input<typeof inviteUserSchema>>({
     resolver: zodResolver(inviteUserSchema),
     defaultValues: { name: '', email: '', language: i18n.language },
   });
   const submit = form.handleSubmit(async (v) => {
     setError(null);
+    setCustomErrors({});
     try {
-      const u = await api<UserDto>('/identity/users/invite', { method: 'POST', body: v });
+      const u = await api<UserDto>('/identity/users/invite', {
+        method: 'POST',
+        body: { ...v, custom },
+      });
       await qc.invalidateQueries({ queryKey: ['users'] });
       onInvited(u.email);
       onClose();
     } catch (e) {
-      if (!applyFieldErrors(e, form.setError as never)) setError(e);
+      const ce = customFieldErrors(e);
+      setCustomErrors(ce);
+      if (!applyFieldErrors(e, form.setError as never) && !Object.keys(ce).length) setError(e);
     }
   });
   return (
@@ -172,6 +181,12 @@ function InviteDialog({
               ))}
             </Form.Select>
           </Field>
+          <CustomFields
+            entityKey="user"
+            values={custom}
+            errors={customErrors}
+            onChange={setCustom}
+          />
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={onClose}>
@@ -257,6 +272,7 @@ function UserDialog({ user, onClose }: { user: UserDto; onClose: () => void }) {
         <p className="text-body-secondary" dir="ltr">
           {user.email}
         </p>
+        {can('identity.user.manage') && <UserCustomFields user={user} />}
         <h2 className="h6">{t('users.assignments')}</h2>
         <ListGroup className="mb-3">
           {assignments.data?.length === 0 && (
@@ -347,5 +363,43 @@ function UserDialog({ user, onClose }: { user: UserDto; onClose: () => void }) {
         </Button>
       </Modal.Footer>
     </Modal>
+  );
+}
+
+function UserCustomFields({ user }: { user: UserDto }) {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const [values, setValues] = useState<Record<string, unknown>>(user.custom ?? {});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const save = async () => {
+    setErrors({});
+    setError(null);
+    setSaved(false);
+    try {
+      await api<UserDto>(`/identity/users/${user.id}`, {
+        method: 'PATCH',
+        body: { custom: values },
+      });
+      await qc.invalidateQueries({ queryKey: ['users'] });
+      setSaved(true);
+    } catch (e) {
+      const ce = customFieldErrors(e);
+      setErrors(ce);
+      if (!Object.keys(ce).length) setError(e);
+    }
+  };
+  return (
+    <div className="mb-3">
+      <ErrorAlert error={error} />
+      {saved && <Alert variant="success">{t('common.saved')}</Alert>}
+      <CustomFields entityKey="user" values={values} errors={errors} onChange={setValues} />
+      {Object.keys(user.custom ?? {}).length > 0 || Object.keys(values).length > 0 ? (
+        <Button size="sm" onClick={() => void save()}>
+          {t('common.save')}
+        </Button>
+      ) : null}
+    </div>
   );
 }

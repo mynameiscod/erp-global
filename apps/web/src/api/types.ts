@@ -8,6 +8,7 @@ export interface UserDto {
   language: string;
   timezone: string;
   mfaEnabled: boolean;
+  custom?: Record<string, unknown>;
   lastLoginAt: string | null;
   createdAt: string;
 }
@@ -49,6 +50,7 @@ export interface OrgUnitDto {
   path: string;
   depth: number;
   status: 'active' | 'inactive';
+  custom?: Record<string, unknown>;
 }
 
 export interface RoleDto {

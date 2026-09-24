@@ -89,18 +89,20 @@ services:
     volumes: [redis-data:/data]
     networks: [internal]
 
-  # S3-compatible storage for file and image fields. Internal only: files are served through file-service.
-  minio:
-    image: minio/minio:latest
+  # S3-compatible storage for file and image fields (SeaweedFS). Internal only: files are served through file-service.
+  s3:
+    image: chrislusf/seaweedfs:4.47
     restart: unless-stopped
-    command: ['server', '/data']
+    entrypoint: ['/bin/sh', '/entrypoint.sh']
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-    volumes: [minio-data:/data]
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    volumes:
+      - s3-data:/data
+      - ./infra/docker/s3/entrypoint.sh:/entrypoint.sh:ro
     networks: [internal]
     healthcheck:
-      test: ['CMD', 'mc', 'ready', 'local']
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:9333/cluster/status']
       interval: 10s
       timeout: 5s
       retries: 12
@@ -136,7 +138,7 @@ services:
         condition: service_completed_successfully
       nats:
         condition: service_healthy
-      minio:
+      s3:
         condition: service_healthy
     environment:
       <<: *service-env
@@ -144,10 +146,10 @@ services:
       MONGO_URI: mongodb://svc_files:${MONGO_PASSWORD_FILES}@mongo:27017/?replicaSet=rs0&authSource=admin
       MONGO_DB: erp_files
       STORAGE_DRIVER: s3
-      S3_ENDPOINT: http://minio:9000
+      S3_ENDPOINT: http://s3:8333
       S3_BUCKET: erp-files
-      S3_ACCESS_KEY: ${MINIO_ROOT_USER}
-      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
       MAX_UPLOAD_MB: 25
 
   identity-service:
@@ -291,4 +293,4 @@ volumes:
   mongo-config:
   nats-data:
   redis-data:
-  minio-data:
+  s3-data:

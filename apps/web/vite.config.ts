@@ -10,6 +10,9 @@ export default defineConfig({
       '@erp/contracts': fileURLToPath(
         new URL('../../packages/contracts/src/index.ts', import.meta.url),
       ),
+      '@erp/metadata': fileURLToPath(
+        new URL('../../packages/metadata/src/index.ts', import.meta.url),
+      ),
     },
   },
   server: {

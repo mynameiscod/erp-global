@@ -25,6 +25,9 @@ const AuditPage = page(() => import('./pages/AuditPage'), 'AuditPage');
 const SettingsPage = page(() => import('./pages/SettingsPage'), 'SettingsPage');
 const AccountPage = page(() => import('./pages/AccountPage'), 'AccountPage');
 const TenantsPage = page(() => import('./pages/TenantsPage'), 'TenantsPage');
+const StudioPage = page(() => import('./studio/StudioPage'), 'StudioPage');
+const RecordsListPage = page(() => import('./records/RecordsListPage'), 'RecordsListPage');
+const RecordFormPage = page(() => import('./records/RecordFormPage'), 'RecordFormPage');
 
 function Home() {
   const { isPlatform } = useAuth();
@@ -108,6 +111,17 @@ export function App() {
             }
           />
           <Route path="account" element={<AccountPage />} />
+          <Route
+            path="studio/*"
+            element={
+              <RequirePermission perm="config.read">
+                <StudioPage />
+              </RequirePermission>
+            }
+          />
+          <Route path="r/:entity" element={<RecordsListPage />} />
+          <Route path="r/:entity/new" element={<RecordFormPage />} />
+          <Route path="r/:entity/:id" element={<RecordFormPage />} />
           <Route
             path="platform/tenants"
             element={

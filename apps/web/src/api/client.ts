@@ -55,6 +55,36 @@ export interface RequestOptions {
   auth?: boolean;
 }
 
+/** Multipart upload (one file in the `file` field), with the same auth and error handling as `api`. */
+export async function apiUpload<T>(path: string, file: File, retried = false): Promise<T> {
+  const body = new FormData();
+  body.append('file', file);
+  const headers: Record<string, string> = {
+    accept: 'application/json',
+    'accept-language': language,
+  };
+  if (accessToken) headers.authorization = `Bearer ${accessToken}`;
+  let res: Response;
+  try {
+    res = await fetch(`/api/v1${path}`, {
+      method: 'POST',
+      headers,
+      body,
+      credentials: 'same-origin',
+    });
+  } catch {
+    throw new ApiError(0, 'NETWORK_ERROR', 'Cannot reach the server. Check your connection.');
+  }
+  if (res.status === 401 && !retried && (await refreshOnce()))
+    return apiUpload<T>(path, file, true);
+  const json = (await res.json().catch(() => undefined)) as unknown;
+  if (!res.ok) {
+    const e = (json as ErrorBody | undefined)?.error;
+    throw new ApiError(res.status, e?.code ?? 'ERROR', e?.message ?? res.statusText, e?.details);
+  }
+  return json as T;
+}
+
 export async function api<T>(path: string, opts: RequestOptions = {}, retried = false): Promise<T> {
   const { method = 'GET', body, query, auth = true } = opts;
   const qs = query

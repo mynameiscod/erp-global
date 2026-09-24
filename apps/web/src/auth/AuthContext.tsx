@@ -12,7 +12,7 @@ import {
   hasPermission,
   PLATFORM_TENANT_ID,
   type AccessTokenClaims,
-  type PermissionKey,
+  type Permission,
 } from '@erp/contracts';
 import { api, setAccessToken, setRefresher } from '../api/client';
 import type { MfaChallenge, SessionResponse, UserDto } from '../api/types';
@@ -28,7 +28,7 @@ interface AuthState {
 
 interface AuthApi extends AuthState {
   isPlatform: boolean;
-  can: (perm: PermissionKey, path?: string) => boolean;
+  can: (perm: Permission, path?: string) => boolean;
   login: (tenantSlug: string, email: string, password: string) => Promise<MfaChallenge | null>;
   loginMfa: (mfaToken: string, code: string) => Promise<void>;
   logout: () => Promise<void>;

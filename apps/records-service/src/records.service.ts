@@ -42,6 +42,8 @@ export interface ListQuery {
   q?: string;
   filter?: Record<string, unknown>;
   orgUnitId?: string;
+  /** Only these records (for showing titles of linked records). */
+  ids?: string[];
 }
 
 export interface WriteBody {
@@ -261,6 +263,7 @@ export class RecordsService {
       this.assertAllowed(entity, 'read');
     }
 
+    if (q.ids?.length) filter._id = { $in: q.ids };
     const fields = new Map(entity.fields.map((f) => [f.key, f]));
     for (const [k, v] of Object.entries(q.filter ?? {})) {
       if (!fields.has(k)) throw AppError.badRequest(`Unknown filter field "${k}"`);
@@ -314,9 +317,14 @@ export class RecordsService {
     return this.toDto(doc, entity);
   }
 
-  /** Small list for lookup pickers: id, number and title. */
-  async lookup(key: string, q?: string) {
-    const page = await this.list(key, { page: 1, pageSize: 20, q });
+  /** Small list for lookup pickers (search) or for showing titles of linked records (ids). */
+  async lookup(key: string, q?: string, ids?: string[]) {
+    const page = await this.list(key, {
+      page: 1,
+      pageSize: ids?.length ? Math.min(ids.length, 100) : 20,
+      q,
+      ids,
+    });
     const { entity } = await this.entity(key);
     return page.items.map((r) => ({
       id: r.id,

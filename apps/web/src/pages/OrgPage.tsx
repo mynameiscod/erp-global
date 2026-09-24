@@ -14,6 +14,7 @@ import {
   PageHeader,
   StatusBadge,
 } from '../components/ui';
+import { CustomFields, customFieldErrors } from '../records/CustomFields';
 
 interface TreeNode extends OrgUnitDto {
   children: TreeNode[];
@@ -213,6 +214,8 @@ function UnitDialog({
   const { t } = useTranslation();
   const [error, setError] = useState<unknown>(null);
   const editing = dialog.kind === 'edit' ? dialog.unit : null;
+  const [custom, setCustom] = useState<Record<string, unknown>>(editing?.custom ?? {});
+  const [customErrors, setCustomErrors] = useState<Record<string, string>>({});
   const form = useForm<UnitForm>({
     defaultValues: {
       name: editing?.name ?? '',
@@ -222,7 +225,7 @@ function UnitDialog({
   });
   const submit = form.handleSubmit(async (v) => {
     setError(null);
-    const body = { name: v.name, type: v.type, ...(v.code ? { code: v.code } : {}) };
+    const body = { name: v.name, type: v.type, ...(v.code ? { code: v.code } : {}), custom };
     try {
       if (editing) await api(`/org/units/${editing.id}`, { method: 'PATCH', body });
       else
@@ -233,7 +236,9 @@ function UnitDialog({
       onSaved();
       onClose();
     } catch (e) {
-      if (!applyFieldErrors(e, form.setError as never)) setError(e);
+      const ce = customFieldErrors(e);
+      setCustomErrors(ce);
+      if (!applyFieldErrors(e, form.setError as never) && !Object.keys(ce).length) setError(e);
     }
   });
   return (
@@ -271,6 +276,13 @@ function UnitDialog({
           >
             <Form.Control {...form.register('code')} className="font-monospace" />
           </Field>
+          <CustomFields
+            entityKey="org_unit"
+            values={custom}
+            errors={customErrors}
+            onChange={setCustom}
+            orgUnitId={editing ? editing.id : (dialog as { parent: OrgUnitDto }).parent.id}
+          />
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={onClose}>

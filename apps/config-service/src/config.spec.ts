@@ -274,16 +274,13 @@ describe('config-service', () => {
 
   it('allocates numbers atomically, with no duplicates under load', async () => {
     const next = () =>
-      http()
-        .post('/internal/config/numbering/next')
-        .set('x-service-token', svc())
-        .send({
-          series: 'admission',
-          orgUnitId: HYD,
-          orgPath: units[HYD].path,
-          orgCode: 'HYD',
-          date: '2026-09-24T00:00:00.000Z',
-        });
+      http().post('/internal/config/numbering/next').set('x-service-token', svc()).send({
+        series: 'admission',
+        orgUnitId: HYD,
+        orgPath: units[HYD].path,
+        orgCode: 'HYD',
+        date: '2026-09-24T00:00:00.000Z',
+      });
     const results = await Promise.all(Array.from({ length: 50 }, () => next()));
     const numbers = results.map((r) => r.body.number);
     expect(new Set(numbers).size).toBe(50);

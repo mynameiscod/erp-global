@@ -3,17 +3,18 @@ import { Button, Dropdown, Nav, Offcanvas } from 'react-bootstrap';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import type { PermissionKey } from '@erp/contracts';
+import { recordPermission, type Permission } from '@erp/contracts';
 import { api } from '../api/client';
 import type { TenantDto } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
+import { customEntities, useEffectiveConfig, useLabel } from '../config/hooks';
 import { LanguageSwitcher } from './LanguageSwitcher';
 
 interface NavItem {
   to: string;
   icon: string;
   label: string;
-  perm?: PermissionKey;
+  perm?: Permission;
   platform?: boolean;
 }
 
@@ -30,6 +31,8 @@ export function useCurrentTenant() {
 function SideNav({ onNavigate }: { onNavigate?: () => void }) {
   const { t } = useTranslation();
   const { can, isPlatform } = useAuth();
+  const cfg = useEffectiveConfig();
+  const label = useLabel();
   const items: NavItem[] = isPlatform
     ? [
         {
@@ -47,24 +50,40 @@ function SideNav({ onNavigate }: { onNavigate?: () => void }) {
         { to: '/roles', icon: 'shield-lock', label: t('nav.roles'), perm: 'access.role.read' },
         { to: '/audit', icon: 'journal-check', label: t('nav.audit'), perm: 'audit.event.read' },
         { to: '/settings', icon: 'gear', label: t('nav.settings'), perm: 'tenant.settings.read' },
+        { to: '/studio', icon: 'sliders2', label: t('nav.studio'), perm: 'config.read' },
       ];
+  // Custom entities appear in the menu as soon as they are published.
+  const modules: NavItem[] = customEntities(cfg.data)
+    .filter((e) => can(recordPermission(e.key, 'read')))
+    .map((e) => ({
+      to: `/r/${e.key}`,
+      icon: e.icon ?? 'box',
+      label: label(e.pluralLabel) || e.key,
+    }));
+  const link = (i: NavItem) => (
+    <Nav.Link
+      as={NavLink}
+      to={i.to}
+      end={i.to === '/'}
+      key={i.to}
+      onClick={onNavigate}
+      className="rounded px-3 py-2 d-flex align-items-center gap-2"
+    >
+      <i className={`bi bi-${i.icon}`} />
+      {i.label}
+    </Nav.Link>
+  );
   return (
     <Nav className="flex-column gap-1">
-      {items
-        .filter((i) => !i.perm || can(i.perm))
-        .map((i) => (
-          <Nav.Link
-            as={NavLink}
-            to={i.to}
-            end={i.to === '/'}
-            key={i.to}
-            onClick={onNavigate}
-            className="rounded px-3 py-2 d-flex align-items-center gap-2"
-          >
-            <i className={`bi bi-${i.icon}`} />
-            {i.label}
-          </Nav.Link>
-        ))}
+      {items.filter((i) => !i.perm || can(i.perm)).map(link)}
+      {modules.length > 0 && (
+        <>
+          <div className="small text-uppercase text-body-secondary px-3 pt-3 pb-1">
+            {t('nav.modules')}
+          </div>
+          {modules.map(link)}
+        </>
+      )}
     </Nav>
   );
 }

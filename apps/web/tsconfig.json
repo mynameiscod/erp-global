@@ -13,7 +13,8 @@
     "noFallthroughCasesInSwitch": true,
     "types": ["vite/client"],
     "paths": {
-      "@erp/contracts": ["../../packages/contracts/src/index.ts"]
+      "@erp/contracts": ["../../packages/contracts/src/index.ts"],
+      "@erp/metadata": ["../../packages/metadata/src/index.ts"]
     }
   },
   "include": ["src", "vite.config.ts"]

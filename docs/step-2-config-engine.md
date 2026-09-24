@@ -1,6 +1,6 @@
-# Step 2: Config engine (design for review)
+# Step 2: Config engine
 
-> Status: **DRAFT, awaiting owner approval.** No Step 2 code is written until this is approved.
+> Status: **Implemented.** The owner approved this design on 2026-09-24 with the recommended answers in section 12.
 > Date: 2026-09-24. Builds on [architecture.md](architecture.md).
 
 ## 1. Goal
@@ -29,11 +29,11 @@ Decisions already made by the owner:
 
 ## 2. New services
 
-| Service           | Owns                                                                                                                                                   |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `config-service`  | All metadata: entities, fields, picklists, forms, list views, numbering series, versions and the layer merge. It also allocates document numbers.      |
-| `records-service` | The data of **custom** entities: create, read, update and delete, validation, formulas, lookups, search and paging, org-unit scoping.                  |
-| `file-service`    | File and image fields: signed upload/download URLs to S3-compatible storage (**MinIO** on the VPS; AWS S3 or Cloudflare R2 later with no code change). |
+| Service           | Owns                                                                                                                                                       |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `config-service`  | All metadata: entities, fields, picklists, forms, list views, numbering series, versions and the layer merge. It also allocates document numbers.          |
+| `records-service` | The data of **custom** entities: create, read, update and delete, validation, formulas, lookups, search and paging, org-unit scoping.                      |
+| `file-service`    | File and image fields: signed upload/download URLs to S3-compatible storage (**SeaweedFS** on the VPS; AWS S3 or Cloudflare R2 later with no code change). |
 
 Built-in entities (users, org units, and later invoices or students) stay in their own services. They get **custom fields** through the same metadata: each built-in document gains a `custom` sub-document, validated against the published schema.
 
@@ -164,6 +164,17 @@ Step 2 builds this layering mechanism. The real India and Education pack content
 ## 12. Please confirm
 
 1. The three new services: `config-service`, `records-service` and `file-service`.
-2. **MinIO** on the VPS for files (S3-compatible, so it can move to S3 or R2 later). It adds one container and needs disk space.
+2. S3-compatible storage on the VPS for files. **SeaweedFS** replaced the planned MinIO, because MinIO stopped publishing free Docker images in 2025. It can still move to S3 or R2 later, and it adds one container that needs disk space.
 3. The formula language is safe and limited. Anything more complex comes with the rules engine in Step 4.
 4. The planned order for Steps 3 to 6 above, or tell me what matters most to you next.
+
+## 13. Implementation notes and known limits
+
+| Area                                 | Behaviour today                                                                                                                                               | Planned                                                                                     |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Consistency after publish            | Every service checks the live config version on each request, so a publish takes effect immediately everywhere. That is one small indexed lookup per request. | Push-based invalidation with version tokens, if the extra lookup ever shows up in profiles. |
+| Custom fields on users and org units | Simple types only. Lookups, files, auto-numbers and unique fields are refused at publish.                                                                     | Full field types on built-in entities.                                                      |
+| File access                          | Files are private to the company, but any signed-in user of that company who knows a file id can get a link. File ids are random UUIDs.                       | Access that follows the permissions of the record that links to the file.                   |
+| Search                               | Case-insensitive search on title and searchable text fields; sorting on any field.                                                                            | Full-text search (OpenSearch) with the reporting step.                                      |
+| Form layouts per branch              | The API accepts form and list overrides per org unit; the studio edits them company-wide.                                                                     | Branch-level form and list designers in the studio.                                         |
+| Numbering                            | Unique and in order, but a cancelled save can leave a gap.                                                                                                    | Gapless series for legal documents with the finance ledger.                                 |

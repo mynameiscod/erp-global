@@ -893,6 +893,9 @@ importers:
       '@erp/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@erp/metadata':
+        specifier: workspace:*
+        version: link:../../packages/metadata
       '@testing-library/react':
         specifier: ^16.3.0
         version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)

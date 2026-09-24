@@ -35,7 +35,7 @@ export class MemoryStorage implements FileStorage {
   }
 }
 
-/** S3-compatible storage: MinIO on the VPS, or AWS S3 / Cloudflare R2 by changing the endpoint. */
+/** S3-compatible storage: SeaweedFS on the VPS, or AWS S3 / Cloudflare R2 by changing the endpoint. */
 export class S3Storage implements FileStorage {
   private readonly s3: S3Client;
 
