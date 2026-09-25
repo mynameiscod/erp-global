@@ -41,7 +41,8 @@ export class TenantDatabases {
 
   async modelFor<T>(tenantId: string, def: ModelDef<T>): Promise<Model<T>> {
     const db = await this.dbFor(tenantId);
-    const model = (db.models[def.name] as Model<T> | undefined) ?? db.model<T>(def.name, def.schema);
+    const model =
+      (db.models[def.name] as Model<T> | undefined) ?? db.model<T>(def.name, def.schema);
     // Unique indexes guard counters and keys; don't hand out a model before they exist.
     // init() is memoised per model, so this only waits on first use per database.
     await model.init();
