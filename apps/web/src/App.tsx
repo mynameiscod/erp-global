@@ -6,6 +6,7 @@ import { AppLayout } from './components/AppLayout';
 import { GuestOnly, RequireAuth, RequirePermission } from './components/guards';
 import { Loading } from './components/ui';
 import { LoginPage } from './pages/auth/LoginPage';
+import { SsoCompletePage } from './pages/auth/SsoCompletePage';
 import {
   AcceptInvitePage,
   ForgotPasswordPage,
@@ -62,6 +63,7 @@ export function App() {
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/accept-invite" element={<AcceptInvitePage />} />
+        <Route path="/sso/complete" element={<SsoCompletePage />} />
         <Route
           element={
             <RequireAuth>

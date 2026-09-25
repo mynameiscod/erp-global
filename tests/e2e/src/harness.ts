@@ -70,7 +70,7 @@ export interface Stack {
  * port with its own database, talking over real HTTP, plus the gateway in
  * front. Only the event broker is in-memory.
  */
-export async function startStack(): Promise<Stack> {
+export async function startStack(opts: { env?: Record<string, string> } = {}): Promise<Stack> {
   const mongo = await startMongo();
   const ports = Object.fromEntries(
     await Promise.all(SERVICES.map(async (s) => [s, await freePort()] as const)),
@@ -93,6 +93,7 @@ export async function startStack(): Promise<Stack> {
     MAIL_TRANSPORT: 'json',
     PLATFORM_ADMIN_EMAIL: PLATFORM_ADMIN.email,
     PLATFORM_ADMIN_PASSWORD: PLATFORM_ADMIN.password,
+    ...opts.env,
   };
 
   const apps = {} as Record<ServiceName, INestApplication>;

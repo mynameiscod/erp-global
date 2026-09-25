@@ -49,6 +49,36 @@ const COPY: Record<EmailTemplate, Record<string, Copy>> = {
       dir: 'rtl',
     },
   },
+  'otp.code': {
+    en: {
+      subject: (v) => `${v.code} is your global-erp sign-in code`,
+      lines: (v) => [
+        `Your sign-in code is ${v.code}.`,
+        'It expires in 5 minutes. Never share it with anyone, including our staff.',
+        'If you did not try to sign in, you can ignore this email.',
+      ],
+      action: '',
+    },
+    hi: {
+      subject: (v) => `${v.code} आपका global-erp साइन-इन कोड है`,
+      lines: (v) => [
+        `आपका साइन-इन कोड ${v.code} है।`,
+        'यह 5 मिनट में समाप्त हो जाएगा। इसे किसी के साथ साझा न करें, हमारे कर्मचारियों के साथ भी नहीं।',
+        'अगर आपने साइन इन करने की कोशिश नहीं की, तो इस ईमेल को अनदेखा करें।',
+      ],
+      action: '',
+    },
+    ar: {
+      subject: (v) => `${v.code} هو رمز تسجيل الدخول إلى global-erp`,
+      lines: (v) => [
+        `رمز تسجيل الدخول الخاص بك هو ${v.code}.`,
+        'تنتهي صلاحيته خلال 5 دقائق. لا تشاركه مع أي أحد، ولا حتى مع موظفينا.',
+        'إذا لم تحاول تسجيل الدخول، يمكنك تجاهل هذه الرسالة.',
+      ],
+      action: '',
+      dir: 'rtl',
+    },
+  },
   'password.reset': {
     en: {
       subject: () => 'Reset your global-erp password',

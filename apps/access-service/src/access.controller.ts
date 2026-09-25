@@ -101,4 +101,9 @@ export class InternalAccessController {
   acl(@Param('userId') userId: string) {
     return this.access.aclFor(userId);
   }
+
+  @Post('assignments')
+  assign(@Body(new ZodPipe(createAssignmentSchema)) body: CreateAssignmentInput) {
+    return this.access.systemAssign(body);
+  }
 }

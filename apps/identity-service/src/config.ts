@@ -24,6 +24,15 @@ export const identityEnvSchema = baseEnvSchema.extend({
   PLATFORM_ADMIN_EMAIL: z.string().optional(),
   PLATFORM_ADMIN_PASSWORD: z.string().optional(),
   PLATFORM_ADMIN_NAME: z.string().default('Platform Admin'),
+  /** Where Google/Microsoft send the browser back; defaults to APP_URL (Nginx proxies /api). */
+  SSO_CALLBACK_BASE_URL: z.string().url().optional(),
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_ISSUER: z.string().url().default('https://accounts.google.com'),
+  MICROSOFT_CLIENT_ID: z.string().optional(),
+  MICROSOFT_CLIENT_SECRET: z.string().optional(),
+  /** `common` accepts work, school and personal accounts; the company policy narrows it. */
+  MICROSOFT_ISSUER: z.string().url().default('https://login.microsoftonline.com/common/v2.0'),
 });
 
 export type IdentityEnv = z.infer<typeof identityEnvSchema>;
@@ -33,7 +42,7 @@ export const CLIENTS = Symbol('CLIENTS');
 
 export interface Clients {
   tenant: Pick<ServiceClient, 'get'>;
-  access: Pick<ServiceClient, 'get'>;
+  access: Pick<ServiceClient, 'get' | 'post'>;
   config: ConfigClient;
 }
 

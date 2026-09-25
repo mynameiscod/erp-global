@@ -56,6 +56,8 @@ const dev = {
   SMTP_HOST: '127.0.0.1',
   SMTP_PORT: '1025',
   MAIL_FROM: 'global-erp <no-reply@localhost>',
+  // Development: WhatsApp codes are printed in the notification-service log.
+  WHATSAPP_PROVIDER: 'console',
   ENABLE_DOCS: 'true',
 };
 
@@ -90,6 +92,15 @@ const production = {
   SMTP_USER: 'no-reply@example.com',
   SMTP_PASS: 'change-me',
   MAIL_FROM: 'global-erp <no-reply@example.com>',
+  // Optional sign-in providers. Leave empty to keep them off.
+  GOOGLE_CLIENT_ID: '',
+  GOOGLE_CLIENT_SECRET: '',
+  MICROSOFT_CLIENT_ID: '',
+  MICROSOFT_CLIENT_SECRET: '',
+  WHATSAPP_PHONE_NUMBER_ID: '',
+  WHATSAPP_ACCESS_TOKEN: '',
+  WHATSAPP_OTP_TEMPLATE: 'otp_code',
+  WHATSAPP_TEMPLATE_LANGUAGES: 'en_US',
 };
 
 const values = { ...(prod ? production : dev), ...common };

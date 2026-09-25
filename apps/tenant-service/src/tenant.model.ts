@@ -1,4 +1,5 @@
 import { Schema, type Connection, type Model, type Types } from 'mongoose';
+import { DEFAULT_LOGIN_POLICY, type LoginPolicy } from '@erp/contracts';
 
 export type TenantStatus = 'provisioning' | 'active' | 'suspended' | 'failed';
 export type TenantPlacement = 'shared' | 'dedicated';
@@ -18,6 +19,8 @@ export interface Tenant {
   status: TenantStatus;
   placement: TenantPlacement;
   settings: { requireMfa: boolean };
+  /** How people may sign in; missing on older tenants, which get the default. */
+  loginPolicy?: LoginPolicy;
   rootOrgUnitId?: string;
   adminUserId?: string;
   provisioning: { completed: string[]; error?: string };
@@ -50,6 +53,7 @@ const tenantSchema = new Schema<Tenant>(
     settings: {
       requireMfa: { type: Boolean, default: false },
     },
+    loginPolicy: { type: Schema.Types.Mixed },
     rootOrgUnitId: String,
     adminUserId: String,
     provisioning: {
@@ -91,4 +95,8 @@ export function toTenantDto(t: Tenant) {
     settings: t.settings,
     createdAt: t.createdAt,
   };
+}
+
+export function loginPolicyOf(t: Pick<Tenant, 'loginPolicy'>): LoginPolicy {
+  return { ...DEFAULT_LOGIN_POLICY, ...(t.loginPolicy ?? {}) };
 }

@@ -287,4 +287,34 @@ describe('access-service', () => {
       .send({ name: 'Typo', permissions: ['records.student.fly'] })
       .expect(400);
   });
+
+  it('assigns the auto-join role for identity-service, once, and only via /internal', async () => {
+    const auth = await adminAuth('tA');
+    const roles = (await http().get('/api/v1/access/roles').set('authorization', auth)).body;
+    const viewer = roles.find((r: { key: string }) => r.key === 'viewer');
+    const NEW = fakeId(150);
+    const body = { userId: NEW, roleId: viewer.id, orgUnitId: SOUTH.id };
+    const first = await http()
+      .post('/internal/access/assignments')
+      .set('x-service-token', svc('tA'))
+      .send(body)
+      .expect(201);
+    const again = await http()
+      .post('/internal/access/assignments')
+      .set('x-service-token', svc('tA'))
+      .send(body)
+      .expect(201);
+    expect(again.body.id).toBe(first.body.id);
+    expect((await aclOf('tA', NEW))[0]).toMatchObject({ ou: SOUTH.id, path: SOUTH.path });
+    await http()
+      .post('/internal/access/assignments')
+      .set('x-service-token', svc('tA'))
+      .send({ ...body, orgUnitId: fakeId(999) })
+      .expect(404);
+    await http()
+      .post('/internal/access/assignments')
+      .set('authorization', auth)
+      .send(body)
+      .expect(401);
+  });
 });

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { Internal, Public, RequirePermissions } from '@erp/auth';
@@ -7,7 +7,9 @@ import {
   platformCreateTenantSchema,
   signupSchema,
   slugSchema,
+  loginPolicySchema,
   tenantSettingsSchema,
+  type LoginPolicy,
   tenantStatusSchema,
   type PlatformCreateTenantInput,
   type SignupInput,
@@ -47,6 +49,21 @@ export class PublicTenantsController {
   @Get('current')
   current() {
     return this.tenants.current();
+  }
+
+  @ApiBearerAuth()
+  @Get('current/login-policy')
+  @RequirePermissions('tenant.settings.read')
+  loginPolicy() {
+    return this.tenants.getLoginPolicy();
+  }
+
+  @ApiBearerAuth()
+  @Put('current/login-policy')
+  @RequirePermissions('tenant.settings.update')
+  @ApiZodBody(loginPolicySchema)
+  setLoginPolicy(@Body(new ZodPipe(loginPolicySchema)) body: LoginPolicy) {
+    return this.tenants.setLoginPolicy(body);
   }
 
   @ApiBearerAuth()

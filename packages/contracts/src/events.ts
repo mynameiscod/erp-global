@@ -25,6 +25,7 @@ export const EventTypes = {
   TenantSignupFailed: 'tenant.signup.failed',
   TenantSettingsUpdated: 'tenant.settings.updated',
   TenantStatusChanged: 'tenant.status.changed',
+  TenantLoginPolicyUpdated: 'tenant.login_policy.updated',
 
   OrgUnitCreated: 'org.unit.created',
   OrgUnitUpdated: 'org.unit.updated',
@@ -49,6 +50,14 @@ export const EventTypes = {
   PasswordChanged: 'identity.password.changed',
   PasswordResetRequested: 'identity.password.reset_requested',
   UserUpdated: 'identity.user.updated',
+  UserAutoJoined: 'identity.user.auto_joined',
+  OtpRequested: 'identity.otp.requested',
+  OtpFailed: 'identity.otp.failed',
+  PhoneVerified: 'identity.phone.verified',
+  PhoneRemoved: 'identity.phone.removed',
+  SsoLinked: 'identity.sso.linked',
+  SsoUnlinked: 'identity.sso.unlinked',
+  SsoRefused: 'identity.sso.refused',
 
   ConfigPublished: 'config.published',
   ConfigRolledBack: 'config.rolled_back',
@@ -74,19 +83,29 @@ export const NOTIFY_STREAM = 'ERP_NOTIFY';
 export const NOTIFY_SUBJECT_PREFIX = 'notify.';
 export const NotifyTypes = {
   EmailRequested: 'notify.email.requested',
+  WhatsappRequested: 'notify.whatsapp.requested',
 } as const;
 
 export function subjectFor(type: string): string {
   return type.startsWith(NOTIFY_SUBJECT_PREFIX) ? type : `${EVENTS_SUBJECT_PREFIX}${type}`;
 }
 
-export type EmailTemplate = 'user.invite' | 'password.reset';
+export type EmailTemplate = 'user.invite' | 'password.reset' | 'otp.code';
 
 export interface EmailRequestedPayload {
   to: string;
   template: EmailTemplate;
   locale: string;
   vars: Record<string, string>;
+}
+
+/** A one-time code sent on WhatsApp with the approved authentication template. */
+export interface WhatsappRequestedPayload {
+  /** E.164, e.g. +919876543210 */
+  to: string;
+  template: 'otp';
+  locale: string;
+  code: string;
 }
 
 export interface OrgUnitMovedPayload {

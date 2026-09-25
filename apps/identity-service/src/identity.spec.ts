@@ -277,7 +277,11 @@ describe('identity-service', () => {
       .expect(200);
 
     const step1 = await login('beta', 'admin@shared.test').expect(200);
-    expect(step1.body).toEqual({ mfaRequired: true, mfaToken: expect.any(String) });
+    expect(step1.body).toEqual({
+      mfaRequired: true,
+      mfaToken: expect.any(String),
+      mfaMethod: 'totp',
+    });
     await http()
       .post('/api/v1/identity/auth/login/mfa')
       .send({ mfaToken: step1.body.mfaToken, code: '000000' })

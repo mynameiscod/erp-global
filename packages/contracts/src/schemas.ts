@@ -63,6 +63,43 @@ export type TenantSettingsInput = z.infer<typeof tenantSettingsSchema>;
 
 export const tenantStatusSchema = z.object({ status: z.enum(['active', 'suspended']) });
 
+const DOMAIN_RE = /^(?=.{3,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+
+/** How people may sign in to a company. The server enforces it; the UI only reflects it. */
+export const loginPolicySchema = z.object({
+  methods: z.object({
+    password: z.boolean(),
+    otp: z.boolean(),
+    google: z.boolean(),
+    microsoft: z.boolean(),
+  }),
+  /** Email domains allowed for Google/Microsoft sign-in, e.g. acme.in. Empty: any domain, invited users only. */
+  ssoDomains: z.array(z.string().trim().toLowerCase().regex(DOMAIN_RE, 'Invalid domain')).max(20),
+  /** Personal Microsoft accounts (outlook.com, hotmail.com) in addition to work accounts. */
+  allowPersonalMicrosoft: z.boolean(),
+  autoJoin: z.object({
+    enabled: z.boolean(),
+    roleId: objectIdSchema.optional(),
+    orgUnitId: objectIdSchema.optional(),
+  }),
+});
+export type LoginPolicy = z.infer<typeof loginPolicySchema>;
+
+export const DEFAULT_LOGIN_POLICY: LoginPolicy = {
+  methods: { password: true, otp: false, google: false, microsoft: false },
+  ssoDomains: [],
+  allowPersonalMicrosoft: true,
+  autoJoin: { enabled: false },
+};
+
+export const phoneSchema = z
+  .string()
+  .transform((v) => v.replace(/[\s\-().]/g, ''))
+  .pipe(z.string().regex(/^\+[1-9]\d{6,14}$/, 'Use international format, e.g. +919876543210'));
+
+export const otpChannelSchema = z.enum(['whatsapp', 'email']);
+export type OtpChannel = z.infer<typeof otpChannelSchema>;
+
 export const platformCreateTenantSchema = signupSchema.extend({
   placement: z.enum(['shared', 'dedicated']),
 });
@@ -81,6 +118,23 @@ export const mfaLoginSchema = z.object({
   code: z.string().regex(/^\d{6}$/),
 });
 export const mfaCodeSchema = z.object({ code: z.string().regex(/^\d{6}$/) });
+
+export const otpLoginRequestSchema = z.object({
+  tenantSlug: z.string().trim().toLowerCase().min(1).max(40),
+  phone: phoneSchema,
+  channel: otpChannelSchema.default('whatsapp'),
+});
+export const otpVerifySchema = z.object({
+  otpToken: z.string().min(10),
+  code: z.string().regex(/^\d{6}$/),
+});
+export const mfaResendSchema = z.object({
+  mfaToken: z.string().min(10),
+  channel: otpChannelSchema,
+});
+export const phoneRequestSchema = z.object({ phone: phoneSchema });
+/** 2FA by code on WhatsApp or email (the authenticator app keeps using /me/mfa/setup). */
+export const mfaMethodSchema = z.object({ method: otpChannelSchema });
 
 /** Values for fields a company added in the config studio; validated against the published config. */
 export const customValuesSchema = z.record(z.string().max(40), z.unknown());

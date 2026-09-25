@@ -4,6 +4,7 @@ import { Types, type Connection, type FilterQuery } from 'mongoose';
 import {
   EventTypes,
   type CountryDto,
+  type LoginPolicy,
   type SignupInput,
   type TenantSettingsInput,
 } from '@erp/contracts';
@@ -12,7 +13,13 @@ import { AppError, MONGO_CONNECTION, paginate, UpstreamError } from '@erp/servic
 import { requireTenantId, runAsTenant } from '@erp/tenancy';
 import { CLIENTS, type Clients } from './clients';
 import { DbProvisioner } from './db-provisioner';
-import { tenantModel, toTenantDto, type Tenant, type TenantPlacement } from './tenant.model';
+import {
+  loginPolicyOf,
+  tenantModel,
+  toTenantDto,
+  type Tenant,
+  type TenantPlacement,
+} from './tenant.model';
 
 /** Slugs that would clash with platform routes, subdomains or the platform tenant. */
 const RESERVED_SLUGS = new Set([
@@ -310,13 +317,21 @@ export class TenantsService {
       status: t.status,
       defaultLanguage: t.defaultLanguage,
       requireMfa: t.settings.requireMfa,
+      loginPolicy: loginPolicyOf(t),
     };
   }
 
+  /** What the login page may show: company name and which sign-in buttons are on. */
   async publicLookup(slug: string) {
     const t = await this.Tenants.findOne({ slug, status: { $in: ['active', 'suspended'] } }).lean();
     if (!t) throw AppError.notFound('Company');
-    return { slug: t.slug, name: t.name, defaultLanguage: t.defaultLanguage, status: t.status };
+    return {
+      slug: t.slug,
+      name: t.name,
+      defaultLanguage: t.defaultLanguage,
+      status: t.status,
+      loginMethods: loginPolicyOf(t).methods,
+    };
   }
 
   async internalGet(id: string) {
@@ -333,6 +348,41 @@ export class TenantsService {
       industryCode: t.industryCode,
       currency: t.currency,
       locale: t.locale,
+      loginPolicy: loginPolicyOf(t),
     };
+  }
+
+  // ---- sign-in policy (company admins) ----
+
+  async getLoginPolicy(): Promise<LoginPolicy> {
+    const t = await this.Tenants.findById(requireTenantId()).lean();
+    if (!t) throw AppError.notFound('Tenant');
+    return loginPolicyOf(t);
+  }
+
+  async setLoginPolicy(policy: LoginPolicy): Promise<LoginPolicy> {
+    const m = policy.methods;
+    if (!m.password && !m.otp && !m.google && !m.microsoft) {
+      throw AppError.badRequest('Keep at least one way to sign in');
+    }
+    if (
+      policy.autoJoin.enabled &&
+      (!policy.autoJoin.roleId || !policy.autoJoin.orgUnitId || !policy.ssoDomains.length)
+    ) {
+      throw AppError.badRequest(
+        'Automatic joining needs allowed domains, a default role and an organization unit',
+      );
+    }
+    const id = requireTenantId();
+    const before = await this.getLoginPolicy();
+    await this.conn.transaction(async (session) => {
+      await this.Tenants.updateOne({ _id: id }, { $set: { loginPolicy: policy } }, { session });
+      await this.outbox.record(
+        EventTypes.TenantLoginPolicyUpdated,
+        { from: before, to: policy },
+        { session },
+      );
+    });
+    return policy;
   }
 }

@@ -65,3 +65,4 @@ export async function startMongo(): Promise<TestMongo> {
 export function fakeId(seed: number): string {
   return seed.toString(16).padStart(24, '0');
 }
+export * from './fake-oidc';

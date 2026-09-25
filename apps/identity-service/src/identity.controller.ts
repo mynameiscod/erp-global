@@ -26,6 +26,11 @@ import {
   loginSchema,
   mfaCodeSchema,
   mfaLoginSchema,
+  mfaMethodSchema,
+  mfaResendSchema,
+  otpLoginRequestSchema,
+  otpVerifySchema,
+  phoneRequestSchema,
   paginationSchema,
   passwordResetConfirmSchema,
   passwordResetRequestSchema,
@@ -36,8 +41,15 @@ import {
   type LoginInput,
 } from '@erp/contracts';
 import { ApiZodBody, ZodPipe } from '@erp/service-kit';
-import { AuthService, type ClientMeta, type SessionResult } from './auth.service';
+import { AccountService } from './account.service';
+import {
+  AuthService,
+  type ClientMeta,
+  type MfaChallengeResult,
+  type SessionResult,
+} from './auth.service';
 import { IDENTITY_ENV, type IdentityEnv } from './config';
+import { SsoError, SsoService } from './sso.service';
 import { UsersService } from './users.service';
 
 export const REFRESH_COOKIE = 'erp_rt';
@@ -46,6 +58,18 @@ const COOKIE_PATH = '/api/v1/identity/auth';
 function meta(req: Request): ClientMeta {
   return { ip: req.ip, userAgent: req.header('user-agent') };
 }
+
+function refreshCookie(env: IdentityEnv): CookieOptions {
+  return {
+    httpOnly: true,
+    secure: env.COOKIE_SECURE,
+    sameSite: 'strict',
+    path: COOKIE_PATH,
+    maxAge: env.REFRESH_TOKEN_TTL_DAYS * 86_400_000,
+  };
+}
+
+const providerSchema = z.enum(['google', 'microsoft']);
 
 @ApiTags('auth')
 @Controller('api/v1/identity/auth')
@@ -57,19 +81,10 @@ export class AuthController {
     @Inject(IDENTITY_ENV) private readonly env: IdentityEnv,
   ) {}
 
-  private cookie(): CookieOptions {
-    return {
-      httpOnly: true,
-      secure: this.env.COOKIE_SECURE,
-      sameSite: 'strict',
-      path: COOKIE_PATH,
-      maxAge: this.env.REFRESH_TOKEN_TTL_DAYS * 86_400_000,
-    };
-  }
-
   /** The refresh token only ever travels in an httpOnly cookie; the body gets the access token. */
-  private respond(res: Response, result: SessionResult) {
-    res.cookie(REFRESH_COOKIE, result.refreshToken, this.cookie());
+  private respond(res: Response, result: SessionResult | MfaChallengeResult) {
+    if ('mfaRequired' in result) return result;
+    res.cookie(REFRESH_COOKIE, result.refreshToken, refreshCookie(this.env));
     const { refreshToken: _rt, ...body } = result;
     return body;
   }
@@ -82,8 +97,35 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.auth.login(body, meta(req));
-    return 'mfaRequired' in result ? result : this.respond(res, result);
+    return this.respond(res, await this.auth.login(body, meta(req)));
+  }
+
+  /** Sends a sign-in code to a mobile number (WhatsApp, or email as the fallback). */
+  @Post('otp/request')
+  @HttpCode(200)
+  @ApiZodBody(otpLoginRequestSchema)
+  otpRequest(
+    @Body(new ZodPipe(otpLoginRequestSchema)) body: z.infer<typeof otpLoginRequestSchema>,
+  ) {
+    return this.auth.requestLoginOtp(body);
+  }
+
+  @Post('otp/verify')
+  @HttpCode(200)
+  @ApiZodBody(otpVerifySchema)
+  async otpVerify(
+    @Body(new ZodPipe(otpVerifySchema)) body: z.infer<typeof otpVerifySchema>,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.respond(res, await this.auth.verifyLoginOtp(body.otpToken, body.code, meta(req)));
+  }
+
+  @Post('login/mfa/resend')
+  @HttpCode(200)
+  @ApiZodBody(mfaResendSchema)
+  mfaResend(@Body(new ZodPipe(mfaResendSchema)) body: z.infer<typeof mfaResendSchema>) {
+    return this.auth.resendMfaCode(body.mfaToken, body.channel);
   }
 
   @Post('login/mfa')
@@ -148,6 +190,81 @@ export class AuthController {
   }
 }
 
+/**
+ * Browser redirects to and from Google/Microsoft. Results go back to the web app's
+ * /sso/complete page in the URL fragment, which never reaches server logs.
+ */
+@ApiTags('auth')
+@Controller('api/v1/identity/sso')
+@Public()
+export class SsoController {
+  constructor(
+    private readonly sso: SsoService,
+    @Inject(IDENTITY_ENV) private readonly env: IdentityEnv,
+  ) {}
+
+  private complete(res: Response, params: Record<string, string>) {
+    const url = `${this.env.APP_URL.replace(/\/$/, '')}/sso/complete#${new URLSearchParams(params)}`;
+    res.redirect(302, url);
+  }
+
+  private fail(res: Response, e: unknown, provider: string) {
+    if (!(e instanceof SsoError)) throw e;
+    this.complete(res, { error: e.code, provider });
+  }
+
+  @Get(':provider/start')
+  async start(
+    @Param('provider') provider: string,
+    @Query('company') company: string | undefined,
+    @Res() res: Response,
+  ) {
+    try {
+      const p = providerSchema.safeParse(provider);
+      if (!p.success) throw new SsoError('unknown_provider');
+      res.redirect(302, await this.sso.start(p.data, (company ?? '').trim().toLowerCase()));
+    } catch (e) {
+      this.fail(res, e, provider);
+    }
+  }
+
+  @Get(':provider/callback')
+  async callback(
+    @Param('provider') provider: string,
+    @Query() query: { code?: string; state?: string; error?: string },
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    try {
+      const p = providerSchema.safeParse(provider);
+      if (!p.success) throw new SsoError('unknown_provider');
+      const out = await this.sso.callback(
+        p.data,
+        {
+          code: typeof query.code === 'string' ? query.code : undefined,
+          state: typeof query.state === 'string' ? query.state : undefined,
+          error: typeof query.error === 'string' ? query.error : undefined,
+        },
+        meta(req),
+      );
+      if (out.kind === 'linked') return this.complete(res, { linked: out.provider });
+      if (out.kind === 'mfa') {
+        const m = out.mfa;
+        return this.complete(res, {
+          mfaToken: m.mfaToken,
+          mfaMethod: m.mfaMethod,
+          ...(m.channel && { channel: m.channel }),
+          ...(m.sentTo && { sentTo: m.sentTo }),
+        });
+      }
+      res.cookie(REFRESH_COOKIE, out.session.refreshToken, refreshCookie(this.env));
+      this.complete(res, { ok: '1' });
+    } catch (e) {
+      this.fail(res, e, provider);
+    }
+  }
+}
+
 @ApiTags('me')
 @ApiBearerAuth()
 @Controller('api/v1/identity/me')
@@ -155,6 +272,8 @@ export class MeController {
   constructor(
     private readonly auth: AuthService,
     private readonly users: UsersService,
+    private readonly account: AccountService,
+    private readonly sso: SsoService,
   ) {}
 
   @Get()
@@ -196,6 +315,64 @@ export class MeController {
   @ApiZodBody(mfaCodeSchema)
   mfaDisable(@Body(new ZodPipe(mfaCodeSchema)) body: z.infer<typeof mfaCodeSchema>) {
     return this.auth.mfaDisable(body.code);
+  }
+
+  /** Two-step verification by WhatsApp or email: sends a code, and `mfa/otp/enable` confirms it. */
+  @Post('mfa/otp/setup')
+  @HttpCode(200)
+  @ApiZodBody(mfaMethodSchema)
+  otpMfaSetup(@Body(new ZodPipe(mfaMethodSchema)) body: z.infer<typeof mfaMethodSchema>) {
+    return this.account.otpMfaSetup(body.method);
+  }
+
+  @Post('mfa/otp/enable')
+  @HttpCode(200)
+  @ApiZodBody(mfaCodeSchema)
+  otpMfaEnable(@Body(new ZodPipe(mfaCodeSchema)) body: z.infer<typeof mfaCodeSchema>) {
+    return this.account.otpMfaEnable(body.code);
+  }
+
+  /** Sends a code for turning off WhatsApp/email two-step verification. */
+  @Post('mfa/code')
+  @HttpCode(200)
+  mfaCode() {
+    return this.account.mfaManageCode();
+  }
+
+  @Post('phone')
+  @HttpCode(200)
+  @ApiZodBody(phoneRequestSchema)
+  requestPhone(@Body(new ZodPipe(phoneRequestSchema)) body: z.infer<typeof phoneRequestSchema>) {
+    return this.account.requestPhone(body.phone);
+  }
+
+  @Post('phone/verify')
+  @HttpCode(200)
+  @ApiZodBody(mfaCodeSchema)
+  verifyPhone(@Body(new ZodPipe(mfaCodeSchema)) body: z.infer<typeof mfaCodeSchema>) {
+    return this.account.verifyPhone(body.code);
+  }
+
+  @Delete('phone')
+  removePhone() {
+    return this.account.removePhone();
+  }
+
+  @Get('linked-accounts')
+  linkedAccounts() {
+    return this.sso.list();
+  }
+
+  @Delete('linked-accounts/:id')
+  unlink(@Param('id') id: string) {
+    return this.sso.unlink(id);
+  }
+
+  /** Returns the Google/Microsoft URL to open; the account is linked when the browser returns. */
+  @Post('sso/:provider/link')
+  @HttpCode(200)
+  link(@Param('provider', new ZodPipe(providerSchema)) provider: z.infer<typeof providerSchema>) {
+    return this.sso.startLink(provider);
   }
 }
 

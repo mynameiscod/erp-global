@@ -338,6 +338,56 @@ export class AccessService {
 
   // ---- internal ----
 
+  /**
+   * Assigns a role on behalf of the platform, e.g. when a user joins by company
+   * domain. Idempotent; the company admin chose the role and unit in the sign-in policy.
+   */
+  async systemAssign(input: CreateAssignmentInput) {
+    const role = await this.loadRole(input.roleId);
+    const unit = await this.clients.org
+      .get<{ id: string; path: string; status: string }>(`/internal/org/units/${input.orgUnitId}`)
+      .catch((e: unknown) => {
+        if (e instanceof UpstreamError && e.status === 404)
+          throw AppError.notFound('Organization unit');
+        throw e;
+      });
+    const Assignments = await this.assignments();
+    const existing = await Assignments.findOne({
+      userId: input.userId,
+      roleId: input.roleId,
+      orgUnitId: unit.id,
+    }).lean();
+    if (existing) return toAssignmentDto(existing, role);
+    const id = new Types.ObjectId();
+    await this.conn.transaction(async (session) => {
+      await Assignments.create(
+        [
+          {
+            _id: id,
+            userId: input.userId,
+            roleId: input.roleId,
+            orgUnitId: unit.id,
+            orgUnitPath: unit.path,
+          },
+        ],
+        { session },
+      );
+      await this.outbox.record(
+        EventTypes.AssignmentCreated,
+        {
+          assignmentId: String(id),
+          userId: input.userId,
+          roleId: input.roleId,
+          roleName: role.name,
+          orgUnitId: unit.id,
+          automatic: true,
+        },
+        { session },
+      );
+    });
+    return toAssignmentDto((await Assignments.findById(id).lean())!, role);
+  }
+
   /** The ACL that identity-service puts into the user's access token. */
   async aclFor(userId: string): Promise<AclEntry[]> {
     const [Roles, Assignments] = await Promise.all([this.roles(), this.assignments()]);

@@ -2,6 +2,7 @@ import { Inject, Module, OnApplicationBootstrap } from '@nestjs/common';
 import { EventTypes, EVENTS_STREAM, subjectFor } from '@erp/contracts';
 import type { EventBus } from '@erp/events';
 import { EVENT_BUS, ServiceCoreModule } from '@erp/service-kit';
+import { AccountService } from './account.service';
 import { AuthService } from './auth.service';
 import {
   CLIENTS,
@@ -15,15 +16,27 @@ import {
   AuthController,
   InternalUsersController,
   MeController,
+  SsoController,
   UsersController,
 } from './identity.controller';
+import { OtpService } from './otp.service';
+import { SsoService } from './sso.service';
 import { UsersService } from './users.service';
 
 @Module({
   imports: [ServiceCoreModule.forRoot({ name: 'identity-service' })],
-  controllers: [AuthController, MeController, UsersController, InternalUsersController],
+  controllers: [
+    AuthController,
+    SsoController,
+    MeController,
+    UsersController,
+    InternalUsersController,
+  ],
   providers: [
     AuthService,
+    OtpService,
+    AccountService,
+    SsoService,
     UsersService,
     { provide: IDENTITY_ENV, useFactory: loadIdentityEnv },
     {

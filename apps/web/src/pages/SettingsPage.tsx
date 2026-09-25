@@ -9,6 +9,7 @@ import type { TenantDto } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { useCurrentTenant } from '../components/AppLayout';
 import { applyFieldErrors, ErrorAlert, Field, Loading, PageHeader } from '../components/ui';
+import { LoginPolicyCard } from './LoginPolicyCard';
 
 interface SettingsForm {
   name: string;
@@ -150,6 +151,9 @@ export function SettingsPage() {
               </dl>
             </Card.Body>
           </Card>
+        </Col>
+        <Col lg={7}>
+          <LoginPolicyCard />
         </Col>
       </Row>
     </>

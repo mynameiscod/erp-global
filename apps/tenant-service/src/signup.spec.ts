@@ -3,6 +3,8 @@ import { generateKeyPairSync } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import { signAccessToken, signServiceToken } from '@erp/auth';
+import { DEFAULT_LOGIN_POLICY, type Permission } from '@erp/contracts';
 import { UpstreamError } from '@erp/service-kit';
 import { startMongo, type TestMongo } from '@erp/testing';
 import { AppModule } from './app.module';
@@ -139,5 +141,60 @@ describe('tenant sign-up saga', () => {
     expect(
       [...new Set(res.body.error.details.map((d: { path: string }) => d.path))].sort(),
     ).toEqual(['admin.password', 'slug']);
+  });
+
+  it('lets the company admin choose sign-in methods, and shows them on the login page', async () => {
+    const server = app.getHttpServer();
+    const t = await request(server)
+      .get('/internal/tenants/by-slug/acme')
+      .set('x-service-token', signServiceToken({ sub: 'svc:identity-service' }, 's'.repeat(40)))
+      .expect(200);
+    expect(t.body.loginPolicy).toEqual(DEFAULT_LOGIN_POLICY);
+    const token = (p: Permission[]) =>
+      `Bearer ${signAccessToken({ sub: 'u1', tid: t.body.id, sid: 's', acl: [{ ou: 'r1', path: '/r1/', p }] }, keys.privateKey, 300)}`;
+    const admin = token(['tenant.settings.read', 'tenant.settings.update']);
+
+    const next = {
+      methods: { password: true, otp: true, google: true, microsoft: false },
+      ssoDomains: ['Acme.in'],
+      allowPersonalMicrosoft: false,
+      autoJoin: { enabled: true, roleId: 'a'.repeat(24), orgUnitId: 'b'.repeat(24) },
+    };
+    const saved = await request(server)
+      .put('/api/v1/tenants/current/login-policy')
+      .set('authorization', admin)
+      .send(next)
+      .expect(200);
+    expect(saved.body.ssoDomains).toEqual(['acme.in']);
+    const got = await request(server)
+      .get('/api/v1/tenants/current/login-policy')
+      .set('authorization', admin)
+      .expect(200);
+    expect(got.body.methods).toEqual(next.methods);
+    const lookup = await request(server).get('/api/v1/tenants/lookup/acme').expect(200);
+    expect(lookup.body.loginMethods).toEqual(next.methods);
+
+    // At least one method must stay on; auto-join needs domains, a role and a unit.
+    const off = {
+      ...next,
+      methods: { password: false, otp: false, google: false, microsoft: false },
+    };
+    await request(server)
+      .put('/api/v1/tenants/current/login-policy')
+      .set('authorization', admin)
+      .send(off)
+      .expect(400);
+    const noDomains = { ...next, ssoDomains: [] };
+    await request(server)
+      .put('/api/v1/tenants/current/login-policy')
+      .set('authorization', admin)
+      .send(noDomains)
+      .expect(400);
+    // Reading is not enough to change it.
+    await request(server)
+      .put('/api/v1/tenants/current/login-policy')
+      .set('authorization', token(['tenant.settings.read']))
+      .send(next)
+      .expect(403);
   });
 });

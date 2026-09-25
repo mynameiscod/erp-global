@@ -8,6 +8,9 @@ export interface UserDto {
   language: string;
   timezone: string;
   mfaEnabled: boolean;
+  mfaMethod?: MfaMethod | null;
+  phone?: string | null;
+  hasPassword?: boolean;
   custom?: Record<string, unknown>;
   lastLoginAt: string | null;
   createdAt: string;
@@ -20,9 +23,48 @@ export interface SessionResponse {
   mfaSetupRequired: boolean;
 }
 
+export type MfaMethod = 'totp' | 'whatsapp' | 'email';
+export type OtpChannel = 'whatsapp' | 'email';
+
 export interface MfaChallenge {
   mfaRequired: true;
   mfaToken: string;
+  mfaMethod?: MfaMethod;
+  channel?: OtpChannel;
+  sentTo?: string;
+  codeSent?: boolean;
+  resendAfter?: number;
+}
+
+export interface OtpSent {
+  otpToken?: string;
+  channel?: OtpChannel;
+  sentTo?: string;
+  expiresIn?: number;
+  resendAfter?: number;
+}
+
+export interface LoginMethods {
+  password: boolean;
+  otp: boolean;
+  google: boolean;
+  microsoft: boolean;
+}
+
+export interface CompanyLookup {
+  slug: string;
+  name: string;
+  defaultLanguage: string;
+  status: string;
+  loginMethods?: LoginMethods;
+}
+
+export interface LinkedAccountDto {
+  id: string;
+  provider: 'google' | 'microsoft';
+  email: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
 }
 
 export interface TenantDto {

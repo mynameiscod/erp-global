@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { PinoLogger } from 'nestjs-pino';
-import { Types, type Connection } from 'mongoose';
+import { Types, type Connection, type Model } from 'mongoose';
 import {
   EventTypes,
   NotifyTypes,
@@ -15,7 +15,15 @@ import { requireContext, runAsTenant } from '@erp/tenancy';
 import { AuthService, INVITE_TTL_MS } from './auth.service';
 import { CLIENTS, IDENTITY_ENV, type Clients, type IdentityEnv } from './config';
 import { hashPassword } from './crypto';
-import { toUserDto, type User } from './models';
+import {
+  LinkedAccountModel,
+  OtpChallengeModel,
+  SsoStateModel,
+  toUserDto,
+  type User,
+} from './models';
+import { TENANT_DATABASES } from '@erp/service-kit';
+import type { TenantDatabases } from '@erp/tenancy';
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -28,6 +36,7 @@ export class UsersService {
     @Inject(CLIENTS) private readonly clients: Clients,
     private readonly outbox: OutboxWriter,
     private readonly log: PinoLogger,
+    @Inject(TENANT_DATABASES) private readonly dbs: TenantDatabases,
   ) {}
 
   private async load(id: string): Promise<User> {
@@ -270,16 +279,17 @@ export class UsersService {
   }
 
   async deleteTenantData() {
-    const [Users, Sessions, Tokens] = await Promise.all([
+    const models = await Promise.all([
       this.auth.users(),
       this.auth.sessions(),
       this.auth.tokens(),
+      this.dbs.model(OtpChallengeModel),
+      this.dbs.model(LinkedAccountModel),
+      this.dbs.model(SsoStateModel),
     ]);
-    const results = await Promise.all([
-      Users.deleteMany({}),
-      Sessions.deleteMany({}),
-      Tokens.deleteMany({}),
-    ]);
+    const results = await Promise.all(
+      models.map((m) => (m as unknown as Model<unknown>).deleteMany({})),
+    );
     return { deleted: results.reduce((n, r) => n + r.deletedCount, 0) };
   }
 

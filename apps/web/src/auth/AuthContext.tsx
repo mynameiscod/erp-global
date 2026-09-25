@@ -15,7 +15,7 @@ import {
   type Permission,
 } from '@erp/contracts';
 import { api, setAccessToken, setRefresher } from '../api/client';
-import type { MfaChallenge, SessionResponse, UserDto } from '../api/types';
+import type { MfaChallenge, OtpChannel, OtpSent, SessionResponse, UserDto } from '../api/types';
 
 type Status = 'loading' | 'anonymous' | 'authenticated';
 
@@ -31,6 +31,10 @@ interface AuthApi extends AuthState {
   can: (perm: Permission, path?: string) => boolean;
   login: (tenantSlug: string, email: string, password: string) => Promise<MfaChallenge | null>;
   loginMfa: (mfaToken: string, code: string) => Promise<void>;
+  /** Password-less: a code on WhatsApp (or email) to a verified mobile number. */
+  requestOtp: (tenantSlug: string, phone: string, channel: OtpChannel) => Promise<OtpSent>;
+  loginOtp: (otpToken: string, code: string) => Promise<MfaChallenge | null>;
+  resendMfa: (mfaToken: string, channel: OtpChannel) => Promise<OtpSent>;
   logout: () => Promise<void>;
   /** Re-reads permissions, e.g. after the user's roles change. */
   reload: () => Promise<void>;
@@ -134,6 +138,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             body: { mfaToken, code },
           }),
         );
+      },
+      async requestOtp(tenantSlug, phone, channel) {
+        const res = await api<OtpSent>('/identity/auth/otp/request', {
+          method: 'POST',
+          auth: false,
+          body: { tenantSlug, phone, channel },
+        });
+        rememberCompany(tenantSlug);
+        return res;
+      },
+      async loginOtp(otpToken, code) {
+        const res = await api<SessionResponse | MfaChallenge>('/identity/auth/otp/verify', {
+          method: 'POST',
+          auth: false,
+          body: { otpToken, code },
+        });
+        if ('mfaRequired' in res) return res;
+        apply(res);
+        return null;
+      },
+      resendMfa(mfaToken, channel) {
+        return api<OtpSent>('/identity/auth/login/mfa/resend', {
+          method: 'POST',
+          auth: false,
+          body: { mfaToken, channel },
+        });
       },
       async logout() {
         await api('/identity/auth/logout', { method: 'POST', auth: false }).catch(() => undefined);

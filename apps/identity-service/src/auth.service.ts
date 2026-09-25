@@ -4,12 +4,15 @@ import QRCode from 'qrcode';
 import { Types, type Connection } from 'mongoose';
 import { signAccessToken } from '@erp/auth';
 import {
+  DEFAULT_LOGIN_POLICY,
   EventTypes,
   NotifyTypes,
   PLATFORM_TENANT_ID,
   type AclEntry,
   type EmailRequestedPayload,
   type LoginInput,
+  type LoginPolicy,
+  type OtpChannel,
 } from '@erp/contracts';
 import { OutboxWriter } from '@erp/events';
 import { AppError, MONGO_CONNECTION, TENANT_DATABASES, UpstreamError } from '@erp/service-kit';
@@ -31,9 +34,11 @@ import {
   SessionModel,
   toUserDto,
   UserModel,
+  type MfaMethod,
   type OneTimePurpose,
   type User,
 } from './models';
+import { invalidCode, OtpService, type IssuedOtp } from './otp.service';
 
 authenticator.options = { window: 1 };
 
@@ -56,7 +61,30 @@ export interface TenantInfo {
   status: string;
   requireMfa: boolean;
   defaultLanguage: string;
+  loginPolicy?: LoginPolicy;
 }
+
+export interface MfaChallengeResult {
+  mfaRequired: true;
+  mfaToken: string;
+  mfaMethod: MfaMethod;
+  /** For WhatsApp/email 2FA: where the code went, or why it was not sent. */
+  channel?: OtpChannel;
+  sentTo?: string;
+  codeSent?: boolean;
+  resendAfter?: number;
+}
+
+/** The platform tenant always signs in with a password (and its own 2FA). */
+export function policyOf(t: TenantInfo): LoginPolicy {
+  if (t.id === PLATFORM_TENANT_ID) return DEFAULT_LOGIN_POLICY;
+  return t.loginPolicy ?? DEFAULT_LOGIN_POLICY;
+}
+
+export const mfaMethodOf = (u: User): MfaMethod => u.mfa?.method ?? 'totp';
+
+export const methodDisabled = () =>
+  new AppError(403, 'METHOD_DISABLED', 'Your company does not allow this way of signing in');
 
 export interface SessionResult {
   accessToken: string;
@@ -68,6 +96,12 @@ export interface SessionResult {
 
 const invalidCredentials = () =>
   new AppError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect');
+const accountLocked = () =>
+  new AppError(
+    429,
+    'ACCOUNT_LOCKED',
+    `Too many failed attempts. Try again in ${LOCK_MINUTES} minutes.`,
+  );
 const invalidSession = () =>
   new AppError(401, 'UNAUTHENTICATED', 'Session expired. Please sign in again.');
 
@@ -79,6 +113,7 @@ export class AuthService {
     @Inject(IDENTITY_ENV) private readonly env: IdentityEnv,
     @Inject(CLIENTS) private readonly clients: Clients,
     private readonly outbox: OutboxWriter,
+    private readonly otp: OtpService,
   ) {}
 
   users() {
@@ -120,7 +155,7 @@ export class AuthService {
     return this.clients.tenant.get<TenantInfo>(`/internal/tenants/${id}`, { tenantId: id });
   }
 
-  private assertTenantUsable(t: TenantInfo): void {
+  assertTenantUsable(t: TenantInfo): void {
     if (t.status === 'suspended') {
       throw new AppError(
         403,
@@ -133,16 +168,14 @@ export class AuthService {
 
   // ---- login ----
 
-  async login(
-    input: LoginInput,
-    meta: ClientMeta,
-  ): Promise<SessionResult | { mfaRequired: true; mfaToken: string }> {
+  async login(input: LoginInput, meta: ClientMeta): Promise<SessionResult | MfaChallengeResult> {
     const tenant = await this.tenantBySlug(input.tenantSlug);
     if (!tenant) {
       await verifyPassword(undefined, input.password);
       throw invalidCredentials();
     }
     this.assertTenantUsable(tenant);
+    if (!policyOf(tenant).methods.password) throw methodDisabled();
 
     return runAsTenant(tenant.id, { type: 'system', id: 'identity-service' }, async () => {
       const Users = await this.users();
@@ -150,13 +183,7 @@ export class AuthService {
       const ok = await verifyPassword(user?.passwordHash, input.password);
       const ctx = requireContext();
 
-      if (user?.lockedUntil && user.lockedUntil > new Date()) {
-        throw new AppError(
-          429,
-          'ACCOUNT_LOCKED',
-          `Too many failed attempts. Try again in ${LOCK_MINUTES} minutes.`,
-        );
-      }
+      if (user?.lockedUntil && user.lockedUntil > new Date()) throw accountLocked();
       if (!user || !ok || user.status !== 'active') {
         if (user) ctx.actor = { type: 'user', id: String(user._id) };
         await this.recordFailedLogin(
@@ -168,15 +195,153 @@ export class AuthService {
       }
       ctx.actor = { type: 'user', id: String(user._id) };
 
-      if (user.mfa?.enabled) {
-        const mfaToken = await this.createOneTimeToken(
-          String(user._id),
-          'mfa_login',
-          MFA_LOGIN_TTL_MS,
-        );
-        return { mfaRequired: true as const, mfaToken };
-      }
+      if (user.mfa?.enabled) return this.startMfa(user);
       return this.completeLogin(user, tenant, meta, 'password');
+    });
+  }
+
+  /** First factor passed: hand out an MFA token and, for WhatsApp/email 2FA, send the code. */
+  async startMfa(user: User): Promise<MfaChallengeResult> {
+    const mfaToken = await this.createOneTimeToken(String(user._id), 'mfa_login', MFA_LOGIN_TTL_MS);
+    const mfaMethod = mfaMethodOf(user);
+    if (mfaMethod === 'totp') return { mfaRequired: true, mfaToken, mfaMethod };
+    const channel: OtpChannel = mfaMethod === 'whatsapp' && user.phone ? 'whatsapp' : 'email';
+    try {
+      const sent = await this.sendMfaCode(user, channel);
+      return { mfaRequired: true, mfaToken, mfaMethod, ...sent, codeSent: true };
+    } catch (e) {
+      // Signing in twice within a minute: the code sent a moment ago is still valid.
+      if (!(e instanceof AppError) || e.status !== 429) throw e;
+      const retry = (e.details as { retryAfter?: number } | undefined)?.retryAfter;
+      return {
+        mfaRequired: true,
+        mfaToken,
+        mfaMethod,
+        channel,
+        codeSent: false,
+        resendAfter: retry,
+      };
+    }
+  }
+
+  private async sendMfaCode(user: User, channel: OtpChannel) {
+    const sent: IssuedOtp = await this.otp.issue({
+      purpose: 'mfa',
+      channel,
+      target: channel === 'whatsapp' ? user.phone! : user.email,
+      rateKey: `user:${String(user._id)}`,
+      locale: user.language,
+      userId: String(user._id),
+      name: user.name,
+    });
+    return { channel: sent.channel, sentTo: sent.sentTo, resendAfter: sent.resendAfter };
+  }
+
+  /** "Send the code again" or "send it by email instead" on the 2FA step. */
+  async resendMfaCode(mfaToken: string, channel: OtpChannel) {
+    const parts = splitToken(mfaToken);
+    if (!parts) throw invalidSession();
+    return runAsTenant(parts.tenantId, { type: 'system', id: 'identity-service' }, async () => {
+      const ott = await (
+        await this.tokens()
+      )
+        .findOne({
+          tokenHash: sha256(parts.secret),
+          purpose: 'mfa_login',
+          usedAt: null,
+          expiresAt: { $gt: new Date() },
+        })
+        .lean();
+      if (!ott) throw invalidSession();
+      const user = await (await this.users()).findById(ott.userId).lean();
+      if (!user || user.status !== 'active' || !user.mfa?.enabled) throw invalidSession();
+      requireContext().actor = { type: 'user', id: String(user._id) };
+      if (mfaMethodOf(user) === 'totp') {
+        throw AppError.badRequest('Use the code from your authenticator app');
+      }
+      if (channel === 'whatsapp' && !user.phone) {
+        throw AppError.badRequest('There is no verified mobile number on this account');
+      }
+      return this.sendMfaCode(user, channel);
+    });
+  }
+
+  // ---- password-less sign-in with a code ----
+
+  /**
+   * Sends a sign-in code to a verified mobile number. The answer is the same whether or not
+   * the number belongs to anyone: unknown numbers get a decoy challenge that never succeeds.
+   */
+  async requestLoginOtp(input: { tenantSlug: string; phone: string; channel: OtpChannel }) {
+    const tenant = await this.tenantBySlug(input.tenantSlug);
+    if (!tenant) throw AppError.notFound('Company');
+    this.assertTenantUsable(tenant);
+    if (!policyOf(tenant).methods.otp) throw methodDisabled();
+    return runAsTenant(tenant.id, { type: 'system', id: 'identity-service' }, async () => {
+      const user = await (
+        await this.users()
+      )
+        .findOne({ phone: input.phone, status: 'active' })
+        .lean();
+      if (user) requireContext().actor = { type: 'user', id: String(user._id) };
+      const issued = await this.otp.issue({
+        purpose: 'login',
+        channel: input.channel,
+        target: user && input.channel === 'email' ? user.email : input.phone,
+        rateKey: `phone:${input.phone}`,
+        locale: user?.language ?? tenant.defaultLanguage,
+        userId: user ? String(user._id) : undefined,
+        name: user?.name,
+        withToken: true,
+        decoy: !user,
+      });
+      return {
+        otpToken: composeToken(tenant.id, issued.secret!),
+        channel: input.channel,
+        // The email address would reveal that the number is registered, so it is not shown.
+        sentTo: input.channel === 'whatsapp' ? issued.sentTo : undefined,
+        expiresIn: issued.expiresIn,
+        resendAfter: issued.resendAfter,
+      };
+    });
+  }
+
+  async verifyLoginOtp(
+    otpToken: string,
+    code: string,
+    meta: ClientMeta,
+  ): Promise<SessionResult | MfaChallengeResult> {
+    const parts = splitToken(otpToken);
+    if (!parts) throw invalidCode(401);
+    const tenant = await this.tenantById(parts.tenantId).catch(() => undefined);
+    if (!tenant) throw invalidCode(401);
+    this.assertTenantUsable(tenant);
+    if (!policyOf(tenant).methods.otp) throw methodDisabled();
+
+    return runAsTenant(parts.tenantId, { type: 'system', id: 'identity-service' }, async () => {
+      const challenge = await this.otp.byToken(parts.secret, 'login');
+      const user = challenge?.userId
+        ? await (await this.users()).findById(challenge.userId).lean()
+        : null;
+      if (user) requireContext().actor = { type: 'user', id: String(user._id) };
+      if (user?.lockedUntil && user.lockedUntil > new Date()) throw accountLocked();
+      const ok = await this.otp.consume(challenge, code);
+      if (!ok || !user || user.status !== 'active' || !user.phone) {
+        if (user) await this.recordFailedLogin(user, user.email, 'bad_otp_code');
+        throw invalidCode(401);
+      }
+      if (user.mfa?.enabled) {
+        // A code on WhatsApp/email cannot be both factors, so only the app counts as the second.
+        if (mfaMethodOf(user) !== 'totp') {
+          throw new AppError(
+            403,
+            'OTP_LOGIN_NOT_ALLOWED',
+            'Sign in with your password. Your two-step verification also uses codes.',
+          );
+        }
+        return this.startMfa(user);
+      }
+      return this.completeLogin(user, tenant, meta, `otp:${challenge!.channel}`);
     });
   }
 
@@ -202,19 +367,25 @@ export class AuthService {
       ).lean();
       if (!ott) throw invalidSession();
       const user = await (await this.users()).findById(ott.userId).lean();
-      if (!user || user.status !== 'active' || !user.mfa?.secretEnc) throw invalidSession();
+      if (!user || user.status !== 'active' || !user.mfa?.enabled) throw invalidSession();
       requireContext().actor = { type: 'user', id: String(user._id) };
 
-      if (!authenticator.check(code, decrypt(user.mfa.secretEnc, this.env.DATA_ENC_KEY))) {
+      const method = mfaMethodOf(user);
+      const ok =
+        method === 'totp'
+          ? !!user.mfa.secretEnc &&
+            authenticator.check(code, decrypt(user.mfa.secretEnc, this.env.DATA_ENC_KEY))
+          : await this.otp.consume(await this.otp.latestFor(String(user._id), 'mfa'), code);
+      if (!ok) {
         await this.recordFailedLogin(user, user.email, 'bad_mfa_code');
         throw new AppError(401, 'INVALID_MFA_CODE', 'The code is not correct');
       }
       await Tokens.updateOne({ _id: ott._id }, { $set: { usedAt: new Date() } });
-      return this.completeLogin(user, tenant, meta, 'password+totp');
+      return this.completeLogin(user, tenant, meta, `mfa:${method}`);
     });
   }
 
-  private async recordFailedLogin(user: User | null, email: string, reason: string): Promise<void> {
+  async recordFailedLogin(user: User | null, email: string, reason: string): Promise<void> {
     const Users = await this.users();
     await this.conn.transaction(async (session) => {
       if (user) {
@@ -232,7 +403,7 @@ export class AuthService {
     });
   }
 
-  private async completeLogin(
+  async completeLogin(
     user: User,
     tenant: TenantInfo,
     meta: ClientMeta,
@@ -528,7 +699,11 @@ export class AuthService {
       await Users.updateOne(
         { _id: user._id },
         {
-          $set: { 'mfa.enabled': true, 'mfa.secretEnc': user.mfa.pendingSecretEnc },
+          $set: {
+            'mfa.enabled': true,
+            'mfa.method': 'totp',
+            'mfa.secretEnc': user.mfa.pendingSecretEnc,
+          },
           $unset: { 'mfa.pendingSecretEnc': '' },
         },
         { session },
@@ -549,15 +724,17 @@ export class AuthService {
       throw AppError.forbidden('Your company requires two-factor authentication');
     const Users = await this.users();
     const user = await Users.findById(ctx.actor!.id).lean();
-    if (!user?.mfa?.enabled || !user.mfa.secretEnc)
-      throw AppError.badRequest('Two-factor authentication is not on');
-    if (!authenticator.check(code, decrypt(user.mfa.secretEnc, this.env.DATA_ENC_KEY))) {
-      throw new AppError(400, 'INVALID_MFA_CODE', 'The code is not correct');
-    }
+    if (!user?.mfa?.enabled) throw AppError.badRequest('Two-factor authentication is not on');
+    const ok =
+      mfaMethodOf(user) === 'totp'
+        ? !!user.mfa.secretEnc &&
+          authenticator.check(code, decrypt(user.mfa.secretEnc, this.env.DATA_ENC_KEY))
+        : await this.otp.consume(await this.otp.latestFor(String(user._id), 'mfa_manage'), code);
+    if (!ok) throw new AppError(400, 'INVALID_MFA_CODE', 'The code is not correct');
     await this.conn.transaction(async (session) => {
       await Users.updateOne(
         { _id: user._id },
-        { $set: { 'mfa.enabled': false }, $unset: { 'mfa.secretEnc': '' } },
+        { $set: { 'mfa.enabled': false }, $unset: { 'mfa.secretEnc': '', 'mfa.method': '' } },
         { session },
       );
       await this.outbox.record(EventTypes.MfaDisabled, { userId: String(user._id) }, { session });

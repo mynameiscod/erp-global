@@ -70,12 +70,15 @@ export const PUBLIC_ROUTES: { method: string; pattern: RegExp }[] = [
   { method: 'GET', pattern: /^\/api\/v1\/tenants\/(slug-available|lookup)\/[^/]+$/ },
   { method: 'GET', pattern: /^\/api\/v1\/reference(\/.*)?$/ },
   { method: '*', pattern: /^\/api\/v1\/identity\/auth(\/.*)?$/ },
+  // Browser redirects to and from Google/Microsoft.
+  { method: 'GET', pattern: /^\/api\/v1\/identity\/sso\/(google|microsoft)\/(start|callback)$/ },
   // Signed, short-lived download links; file-service verifies the signature.
   { method: 'GET', pattern: /^\/api\/v1\/files\/[0-9a-f-]{36}\/content$/ },
 ];
 
 /** Stricter limits on endpoints that attackers hammer. */
 export const SENSITIVE_ROUTES = [
-  /^\/api\/v1\/identity\/auth\/(login|login\/mfa|password\/forgot|password\/reset|invite\/accept)$/,
+  /^\/api\/v1\/identity\/auth\/(login|login\/mfa|login\/mfa\/resend|otp\/request|otp\/verify|password\/forgot|password\/reset|invite\/accept)$/,
+  /^\/api\/v1\/identity\/sso\/(google|microsoft)\/start$/,
   /^\/api\/v1\/tenants\/signup$/,
 ];

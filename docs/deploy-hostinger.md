@@ -30,11 +30,14 @@ chmod 600 .env.production
 
 Edit `.env.production`:
 
-| Setting                                                                        | Set it to                                                        |
-| ------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
-| `APP_URL`                                                                      | `https://erp.example.com`                                        |
-| `PLATFORM_ADMIN_EMAIL`                                                         | your email (Super Admin, sign in with company `platform`)        |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | your Hostinger mailbox, e.g. `smtp.hostinger.com`, `465`, `true` |
+| Setting                                                                                 | Set it to                                                                                                                                      |
+| --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `APP_URL`                                                                               | `https://erp.example.com`                                                                                                                      |
+| `PLATFORM_ADMIN_EMAIL`                                                                  | your email (Super Admin, sign in with company `platform`)                                                                                      |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`          | your Hostinger mailbox, e.g. `smtp.hostinger.com`, `465`, `true`                                                                               |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (optional)                                   | Google Cloud Console → Credentials → OAuth client (Web). Redirect URL `https://erp.example.com/api/v1/identity/sso/google/callback`            |
+| `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` (optional)                             | Entra ID → App registrations (multi-tenant + personal accounts). Redirect URL `https://erp.example.com/api/v1/identity/sso/microsoft/callback` |
+| `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_OTP_TEMPLATE` (optional) | Meta Business Manager → WhatsApp → API setup, with an approved **Authentication** template                                                     |
 
 Keep a secure copy of this file. Its keys decrypt 2FA secrets and sign logins.
 
