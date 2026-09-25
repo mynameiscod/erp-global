@@ -199,7 +199,7 @@ const settingsSchema = new Schema<WorkflowSettings>(
   { collection: 'workflow_settings', versionKey: false },
 );
 settingsSchema.plugin(tenantPlugin);
-settingsSchema.index({ tenantId: 1 }, { unique: true });
+settingsSchema.index({ tenantId: 1 }, { unique: true, name: 'tenantId_unique' });
 
 export const SettingsModel: ModelDef<WorkflowSettings> = {
   name: 'WorkflowSettings',

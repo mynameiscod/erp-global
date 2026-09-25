@@ -59,6 +59,6 @@ const headSchema = new Schema<AuditHead>(
   { collection: 'audit_heads', versionKey: false },
 );
 headSchema.plugin(tenantPlugin);
-headSchema.index({ tenantId: 1 }, { unique: true });
+headSchema.index({ tenantId: 1 }, { unique: true, name: 'tenantId_unique' });
 
 export const AuditHeadModel: ModelDef<AuditHead> = { name: 'AuditHead', schema: headSchema };

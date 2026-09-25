@@ -25,7 +25,7 @@ const draftSchema = new Schema<Draft>(
   { collection: 'config_drafts', versionKey: false, minimize: false },
 );
 draftSchema.plugin(tenantPlugin);
-draftSchema.index({ tenantId: 1 }, { unique: true });
+draftSchema.index({ tenantId: 1 }, { unique: true, name: 'tenantId_unique' });
 
 export const DraftModel: ModelDef<Draft> = { name: 'Draft', schema: draftSchema };
 
