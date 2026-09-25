@@ -44,6 +44,8 @@ describe('api-gateway', () => {
       'config',
       'records',
       'files',
+      'workflow',
+      'notification',
     ];
     const ups = await Promise.all(names.map(echoServer));
     servers.push(...ups.map((u) => u.server));
@@ -61,6 +63,8 @@ describe('api-gateway', () => {
       CONFIG_SERVICE_URL: url.config,
       RECORDS_SERVICE_URL: url.records,
       FILE_SERVICE_URL: url.files,
+      WORKFLOW_SERVICE_URL: url.workflow,
+      NOTIFICATION_SERVICE_URL: url.notification,
     });
     gateway = createGateway(env);
   });
@@ -73,6 +77,9 @@ describe('api-gateway', () => {
       ['/api/v1/access/roles', 'access'],
       ['/api/v1/audit/events', 'audit'],
       ['/api/v1/identity/me', 'identity'],
+      ['/api/v1/workflow/tasks', 'workflow'],
+      ['/api/v1/notifications/stream', 'notification'],
+      ['/api/v1/notifications', 'notification'],
       ['/api/v1/tenants/current', 'tenant'],
       ['/api/v1/platform/tenants', 'tenant'],
       ['/api/v1/config/effective', 'config'],

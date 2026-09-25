@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   Res,
@@ -20,6 +21,7 @@ import {
   acceptInviteSchema,
   adminUpdateUserSchema,
   changePasswordSchema,
+  delegationSchema,
   emailSchema,
   inviteUserSchema,
   languageSchema,
@@ -287,6 +289,22 @@ export class MeController {
     return this.users.updateMe(body);
   }
 
+  @Get('delegation')
+  delegation() {
+    return this.users.myDelegation();
+  }
+
+  @Put('delegation')
+  @ApiZodBody(delegationSchema)
+  setDelegation(@Body(new ZodPipe(delegationSchema)) body: z.infer<typeof delegationSchema>) {
+    return this.users.setDelegation(body);
+  }
+
+  @Delete('delegation')
+  clearDelegation() {
+    return this.users.clearDelegation();
+  }
+
   @Post('password')
   @HttpCode(200)
   @ApiZodBody(changePasswordSchema)
@@ -446,6 +464,8 @@ const bootstrapAdminSchema = z.object({
   timezone: timezoneSchema,
 });
 
+const batchSchema = z.object({ ids: z.array(z.string().max(40)).max(500) });
+
 @Controller('internal/users')
 @Internal()
 export class InternalUsersController {
@@ -461,6 +481,22 @@ export class InternalUsersController {
   @Delete('tenant-data')
   deleteTenantData() {
     return this.users.deleteTenantData();
+  }
+
+  @Post('batch')
+  @HttpCode(200)
+  batch(@Body(new ZodPipe(batchSchema)) body: z.infer<typeof batchSchema>) {
+    return this.users.internalBatch(body.ids);
+  }
+
+  @Get(':id/delegators')
+  delegators(@Param('id') id: string) {
+    return this.users.internalDelegators(id);
+  }
+
+  @Get(':id/delegate')
+  delegate(@Param('id') id: string) {
+    return this.users.internalDelegate(id);
   }
 
   @Get(':id')

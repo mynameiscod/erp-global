@@ -9,6 +9,15 @@
  * It is parsed into a tree and interpreted: no JavaScript is ever evaluated,
  * there are no loops, and only the functions below exist. Field names refer to
  * the same record's fields.
+ *
+ * Conditions in rules, workflows and automations can also use the context:
+ *
+ *   old.amount            value before this save
+ *   user.id               the acting user
+ *   CHANGED(amount)       the field changed in this save
+ *   HAS_ROLE("Finance")   the acting user holds this role (name or key)
+ *   IN_UNIT("HYD")        the record is in the unit with this code, or below it
+ *   STATUS()              the record's workflow state
  */
 
 export class FormulaError extends Error {
@@ -69,7 +78,7 @@ function tokenize(src: string): Token[] {
       continue;
     }
     if (/[A-Za-z_]/.test(c)) {
-      const m = /^[A-Za-z_][A-Za-z0-9_]*/.exec(src.slice(i))!;
+      const m = /^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?/.exec(src.slice(i))!;
       out.push({ t: 'id', v: m[0], pos: i });
       i += m[0].length;
       continue;
@@ -91,6 +100,11 @@ function tokenize(src: string): Token[] {
   out.push({ t: 'eof', v: '', pos: src.length });
   return out;
 }
+
+/** Dotted names that read the context instead of the record. */
+const CONTEXT_PREFIXES = ['old.', 'user.'];
+/** Functions that read the context; not allowed in calculated fields. */
+export const CONTEXT_FUNCTIONS = ['CHANGED', 'HAS_ROLE', 'IN_UNIT', 'STATUS'];
 
 const PRECEDENCE: Record<string, number> = {
   '||': 1,
@@ -177,6 +191,9 @@ class Parser {
         }
         this.expect(')');
         if (!(upper in FUNCTIONS)) throw new FormulaError(`Unknown function ${t.v}`, t.pos);
+        if (upper === 'CHANGED' && (args.length !== 1 || args[0].kind !== 'field')) {
+          throw new FormulaError('CHANGED needs a field name, e.g. CHANGED(amount)', t.pos);
+        }
         const [min, max] = FUNCTIONS[upper].arity;
         if (args.length < min || args.length > max) {
           throw new FormulaError(
@@ -185,6 +202,9 @@ class Parser {
           );
         }
         return { kind: 'call', name: upper, args };
+      }
+      if (t.v.includes('.') && !CONTEXT_PREFIXES.some((p) => t.v.startsWith(p))) {
+        throw new FormulaError(`Unknown name "${t.v}"`, t.pos);
       }
       return { kind: 'field', name: t.v };
     }
@@ -265,6 +285,28 @@ const FUNCTIONS: Record<string, Fn> = {
     arity: [2, 2],
     call: ([a, n]) => isoDate(new Date(toDate(a()).getTime() + num(n()) * 86_400_000)),
   },
+  IS_EMPTY: { arity: [1, 1], call: ([a]) => str(a()).trim() === '' },
+  CONTAINS: {
+    arity: [2, 2],
+    call: ([a, b]) => str(a()).toLowerCase().includes(str(b()).toLowerCase()),
+  },
+  // Evaluated specially (it needs the field name, not its value); see `evaluate`.
+  CHANGED: { arity: [1, 1], call: () => false },
+  HAS_ROLE: {
+    arity: [1, 1],
+    call: ([a], ctx) => {
+      const want = str(a()).trim().toLowerCase();
+      return (ctx.user?.roles ?? []).some((r) => r.toLowerCase() === want);
+    },
+  },
+  IN_UNIT: {
+    arity: [1, 1],
+    call: ([a], ctx) => {
+      const want = str(a()).trim().toLowerCase();
+      return (ctx.unitCodes ?? []).some((c) => c.toLowerCase() === want);
+    },
+  },
+  STATUS: { arity: [0, 0], call: (_a, ctx) => ctx.status ?? null },
 };
 
 export const FORMULA_FUNCTIONS = Object.keys(FUNCTIONS);
@@ -272,6 +314,24 @@ export const FORMULA_FUNCTIONS = Object.keys(FUNCTIONS);
 export interface EvalContext {
   fields: Record<string, unknown>;
   now: Date;
+  /** Values before this save (missing on create). */
+  old?: Record<string, unknown>;
+  /** The acting user: id and role names/keys. */
+  user?: { id: string; roles: string[] };
+  /** Codes of the record's org unit and every unit above it. */
+  unitCodes?: string[];
+  /** Current workflow state of the record. */
+  status?: string | null;
+}
+
+function toValue(v: unknown): Value {
+  if (v === undefined || v === null) return null;
+  if (typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean') return v;
+  if (v instanceof Date) return v.toISOString();
+  if (typeof v === 'object' && 'amount' in (v as object))
+    return num((v as { amount: Value }).amount);
+  if (Array.isArray(v)) return v.map(String).join(',');
+  return str(String(v));
 }
 
 function evaluate(node: Node, ctx: EvalContext): Value {
@@ -283,13 +343,11 @@ function evaluate(node: Node, ctx: EvalContext): Value {
     case 'null':
       return null;
     case 'field': {
-      const v = ctx.fields[node.name];
-      if (v === undefined || v === null) return null;
-      if (typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean') return v;
-      if (v instanceof Date) return v.toISOString();
-      if (typeof v === 'object' && 'amount' in (v as object))
-        return num((v as { amount: Value }).amount);
-      return str(String(v));
+      if (node.name.startsWith('old.')) return toValue(ctx.old?.[node.name.slice(4)]);
+      if (node.name.startsWith('user.')) {
+        return node.name === 'user.id' ? (ctx.user?.id ?? null) : null;
+      }
+      return toValue(ctx.fields[node.name]);
     }
     case 'unary': {
       const a = evaluate(node.arg, ctx);
@@ -333,6 +391,12 @@ function evaluate(node: Node, ctx: EvalContext): Value {
       throw new FormulaError(`Unknown operator ${node.op}`);
     }
     case 'call':
+      if (node.name === 'CHANGED') {
+        const name = (node.args[0] as { name: string }).name;
+        const now = JSON.stringify(ctx.fields[name] ?? null);
+        if (!ctx.old) return now !== 'null' && now !== '""';
+        return now !== JSON.stringify(ctx.old[name] ?? null);
+      }
       return FUNCTIONS[node.name].call(
         node.args.map((a) => () => evaluate(a, ctx)),
         ctx,
@@ -340,36 +404,44 @@ function evaluate(node: Node, ctx: EvalContext): Value {
   }
 }
 
-function collectFields(node: Node, out: Set<string>): void {
+function collectFields(node: Node, out: Set<string>, context: Set<string>): void {
   switch (node.kind) {
     case 'field':
-      out.add(node.name);
+      if (node.name.includes('.')) {
+        context.add(node.name);
+        if (node.name.startsWith('old.')) out.add(node.name.slice(4));
+      } else out.add(node.name);
       break;
     case 'unary':
-      collectFields(node.arg, out);
+      collectFields(node.arg, out, context);
       break;
     case 'binary':
-      collectFields(node.left, out);
-      collectFields(node.right, out);
+      collectFields(node.left, out, context);
+      collectFields(node.right, out, context);
       break;
     case 'call':
-      node.args.forEach((a) => collectFields(a, out));
+      if (CONTEXT_FUNCTIONS.includes(node.name)) context.add(`${node.name}()`);
+      node.args.forEach((a) => collectFields(a, out, context));
       break;
   }
 }
 
 export interface CompiledFormula {
-  /** Field keys the formula reads. */
+  /** Field keys the formula reads (including those read through `old.`). */
   fields: string[];
+  /** Context the formula reads: `old.x`, `user.id`, `CHANGED()`… Empty for plain formulas. */
+  context: string[];
   evaluate(ctx: EvalContext): Value;
 }
 
 export function compileFormula(source: string): CompiledFormula {
   const tree = new Parser(tokenize(source)).parse();
   const fields = new Set<string>();
-  collectFields(tree, fields);
+  const context = new Set<string>();
+  collectFields(tree, fields, context);
   return {
     fields: [...fields],
+    context: [...context],
     evaluate: (ctx) => {
       const v = evaluate(tree, ctx);
       return typeof v === 'number' && !Number.isFinite(v) ? null : v;

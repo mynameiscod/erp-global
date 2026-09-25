@@ -27,6 +27,10 @@ export interface User {
   platformPermissions: PermissionKey[];
   /** Values of custom fields added in the config studio. */
   custom: Record<string, unknown>;
+  /** "Reports to": the manager who approves this user's requests. */
+  managerId?: string;
+  /** Out of office: `toUserId` may act on this user's approvals between the dates. */
+  delegation?: { toUserId: string; from: Date; until: Date; note?: string };
   failedLogins: number;
   lockedUntil?: Date;
   lastLoginAt?: Date;
@@ -52,6 +56,11 @@ const userSchema = new Schema<User>(
     },
     platformPermissions: { type: [String], default: [] },
     custom: { type: Schema.Types.Mixed, default: {} },
+    managerId: String,
+    delegation: {
+      type: new Schema({ toUserId: String, from: Date, until: Date, note: String }, { _id: false }),
+      default: undefined,
+    },
     failedLogins: { type: Number, default: 0 },
     lockedUntil: Date,
     lastLoginAt: Date,
@@ -61,6 +70,10 @@ const userSchema = new Schema<User>(
 );
 userSchema.plugin(tenantPlugin);
 userSchema.index({ tenantId: 1, email: 1 }, { unique: true });
+userSchema.index(
+  { tenantId: 1, 'delegation.toUserId': 1 },
+  { partialFilterExpression: { 'delegation.toUserId': { $type: 'string' } } },
+);
 userSchema.index(
   { tenantId: 1, phone: 1 },
   { unique: true, partialFilterExpression: { phone: { $type: 'string' } } },
@@ -80,6 +93,7 @@ export function toUserDto(u: User) {
     mfaMethod: u.mfa?.enabled ? (u.mfa.method ?? 'totp') : null,
     phone: u.phone ?? null,
     hasPassword: !!u.passwordHash,
+    managerId: u.managerId ?? null,
     custom: u.custom ?? {},
     lastLoginAt: u.lastLoginAt ?? null,
     createdAt: u.createdAt,

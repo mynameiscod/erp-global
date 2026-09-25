@@ -11,6 +11,7 @@ import {
   type CreateRoleInput,
 } from '@erp/contracts';
 import { ApiZodBody, ZodPipe } from '@erp/service-kit';
+import { requireContext } from '@erp/tenancy';
 import { AccessService } from './access.service';
 
 @ApiTags('access')
@@ -18,6 +19,12 @@ import { AccessService } from './access.service';
 @Controller('api/v1/access')
 export class AccessController {
   constructor(private readonly access: AccessService) {}
+
+  /** The signed-in user's roles, for rules on forms (HAS_ROLE). */
+  @Get('me/roles')
+  myRoles() {
+    return this.access.rolesOf(requireContext().actor!.id);
+  }
 
   @Get('permissions')
   @RequirePermissions('access.role.read')
@@ -82,6 +89,14 @@ const bootstrapSchema = z.object({
   rootPath: z.string().regex(/^\/[a-f0-9]{24}\/$/),
 });
 
+const holdersQuery = z.object({
+  roleId: objectIdSchema,
+  path: z
+    .string()
+    .regex(/^(\/[a-f0-9]{24})+\/$/)
+    .optional(),
+});
+
 @Controller('internal/access')
 @Internal()
 export class InternalAccessController {
@@ -95,6 +110,16 @@ export class InternalAccessController {
   @Delete('bootstrap')
   undo() {
     return this.access.undoBootstrap();
+  }
+
+  @Get('users/:userId/roles')
+  roles(@Param('userId') userId: string) {
+    return this.access.rolesOf(userId);
+  }
+
+  @Get('role-holders')
+  holders(@Query(new ZodPipe(holdersQuery)) q: z.infer<typeof holdersQuery>) {
+    return this.access.roleHolders(q.roleId, q.path);
   }
 
   @Get('users/:userId/acl')

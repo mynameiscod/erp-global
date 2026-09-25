@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Dropdown, Nav, Offcanvas } from 'react-bootstrap';
+import { Badge, Button, Dropdown, Nav, Offcanvas } from 'react-bootstrap';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
@@ -8,7 +8,9 @@ import { api } from '../api/client';
 import type { TenantDto } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { customEntities, useEffectiveConfig, useLabel } from '../config/hooks';
+import { useApprovalCount } from '../workflow/hooks';
 import { LanguageSwitcher } from './LanguageSwitcher';
+import { NotificationBell } from './NotificationBell';
 
 interface NavItem {
   to: string;
@@ -16,6 +18,7 @@ interface NavItem {
   label: string;
   perm?: Permission;
   platform?: boolean;
+  badge?: number;
 }
 
 export function useCurrentTenant() {
@@ -33,6 +36,7 @@ function SideNav({ onNavigate }: { onNavigate?: () => void }) {
   const { can, isPlatform } = useAuth();
   const cfg = useEffectiveConfig();
   const label = useLabel();
+  const approvals = useApprovalCount();
   const items: NavItem[] = isPlatform
     ? [
         {
@@ -45,6 +49,12 @@ function SideNav({ onNavigate }: { onNavigate?: () => void }) {
       ]
     : [
         { to: '/', icon: 'speedometer2', label: t('nav.dashboard') },
+        {
+          to: '/approvals',
+          icon: 'check2-square',
+          label: t('nav.approvals'),
+          badge: approvals.data?.pending,
+        },
         { to: '/org', icon: 'diagram-3', label: t('nav.organization'), perm: 'org.unit.read' },
         { to: '/users', icon: 'people', label: t('nav.users'), perm: 'identity.user.read' },
         { to: '/roles', icon: 'shield-lock', label: t('nav.roles'), perm: 'access.role.read' },
@@ -71,6 +81,11 @@ function SideNav({ onNavigate }: { onNavigate?: () => void }) {
     >
       <i className={`bi bi-${i.icon}`} />
       {i.label}
+      {!!i.badge && (
+        <Badge pill bg="danger" className="ms-auto">
+          {i.badge}
+        </Badge>
+      )}
     </Nav.Link>
   );
   return (
@@ -133,6 +148,7 @@ export function AppLayout() {
             <i className="bi bi-list fs-4" />
           </Button>
           <div className="ms-auto d-flex align-items-center gap-2">
+            {!isPlatform && <NotificationBell />}
             <LanguageSwitcher />
             <Dropdown align="end">
               <Dropdown.Toggle

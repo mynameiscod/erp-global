@@ -388,6 +388,62 @@ export class AccessService {
     return toAssignmentDto((await Assignments.findById(id).lean())!, role);
   }
 
+  /** A user's roles and where they hold them; used for HAS_ROLE() and role approvers. */
+  async rolesOf(userId: string) {
+    const [Roles, Assignments] = await Promise.all([this.roles(), this.assignments()]);
+    const list = await Assignments.find({ userId }).lean();
+    if (!list.length) return [];
+    const roles = new Map(
+      (await Roles.find({ _id: { $in: [...new Set(list.map((a) => a.roleId))] } }).lean()).map(
+        (r) => [String(r._id), r],
+      ),
+    );
+    return list
+      .filter((a) => roles.has(a.roleId))
+      .map((a) => {
+        const r = roles.get(a.roleId)!;
+        return {
+          roleId: a.roleId,
+          name: r.name,
+          key: r.key ?? null,
+          orgUnitId: a.orgUnitId,
+          path: a.orgUnitPath,
+        };
+      });
+  }
+
+  /**
+   * Holders of a role at the unit with `path` or, if nobody there has it, at the nearest
+   * unit above. Returns the users of the first level that has any.
+   */
+  async roleHolders(roleId: string, path?: string) {
+    if (!path) {
+      // Company-wide records: the holders nearest the top of the org tree.
+      const all = await (await this.assignments()).find({ roleId }).lean();
+      const depth = (p: string) => p.split('/').filter(Boolean).length;
+      const top = Math.min(...all.map((a) => depth(a.orgUnitPath)));
+      const here = all.filter((a) => depth(a.orgUnitPath) === top);
+      return {
+        orgUnitId: here[0]?.orgUnitId ?? null,
+        userIds: [...new Set(here.map((a) => a.userId))],
+      };
+    }
+    const ids = path.split('/').filter(Boolean);
+    const prefixes = ids.map((_, i) => `/${ids.slice(0, i + 1).join('/')}/`);
+    const list = await (
+      await this.assignments()
+    )
+      .find({ roleId, orgUnitPath: { $in: prefixes } })
+      .lean();
+    for (const p of [...prefixes].reverse()) {
+      const here = list.filter((a) => a.orgUnitPath === p);
+      if (here.length) {
+        return { orgUnitId: here[0].orgUnitId, userIds: [...new Set(here.map((a) => a.userId))] };
+      }
+    }
+    return { orgUnitId: null, userIds: [] as string[] };
+  }
+
   /** The ACL that identity-service puts into the user's access token. */
   async aclFor(userId: string): Promise<AclEntry[]> {
     const [Roles, Assignments] = await Promise.all([this.roles(), this.assignments()]);

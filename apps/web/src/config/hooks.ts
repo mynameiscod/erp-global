@@ -13,7 +13,13 @@ import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 
 export type EffectiveConfigResponse = EffectiveConfig & {
-  tenant: { countryCode: string; currency: string; locale: string; defaultLanguage: string };
+  tenant: {
+    countryCode: string;
+    currency: string;
+    locale: string;
+    defaultLanguage: string;
+    timezone?: string;
+  };
 };
 
 export interface DraftResponse {
@@ -41,7 +47,16 @@ export interface ConfigIssue {
 }
 
 /** Draft item kinds as the API names them. */
-export type ConfigKind = 'entities' | 'picklists' | 'forms' | 'list-views' | 'numbering';
+export type ConfigKind =
+  | 'entities'
+  | 'picklists'
+  | 'forms'
+  | 'list-views'
+  | 'numbering'
+  | 'workflows'
+  | 'rules'
+  | 'automations'
+  | 'templates';
 
 /** Published configuration for the current user, optionally at an org unit or as a draft preview. */
 export function useEffectiveConfig(

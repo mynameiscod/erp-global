@@ -170,8 +170,28 @@ export const adminUpdateUserSchema = z
     language: languageSchema,
     timezone: timezoneSchema,
     custom: customValuesSchema,
+    /** "Reports to": the user's manager, for manager approvals. */
+    managerId: objectIdSchema.nullable(),
   })
   .partial();
+
+/** Out of office: someone else may act on my approvals between these dates. */
+export const delegationSchema = z
+  .object({
+    toUserId: objectIdSchema,
+    from: z.string().datetime({ offset: true }),
+    until: z.string().datetime({ offset: true }),
+    note: z.string().trim().max(200).optional(),
+  })
+  .refine((d) => new Date(d.until) > new Date(d.from), {
+    message: 'The end must be after the start',
+    path: ['until'],
+  })
+  .refine((d) => new Date(d.until).getTime() - new Date(d.from).getTime() <= 366 * 86_400_000, {
+    message: 'At most one year',
+    path: ['until'],
+  });
+export type DelegationInput = z.infer<typeof delegationSchema>;
 
 export const updateProfileSchema = z
   .object({
@@ -198,6 +218,8 @@ export const updateOrgUnitSchema = z
     code: z.string().trim().max(40),
     type: z.string().trim().min(1).max(40),
     custom: customValuesSchema,
+    /** The unit's head, for "unit head" approvals. */
+    headUserId: objectIdSchema.nullable(),
   })
   .partial();
 
@@ -224,3 +246,32 @@ export const paginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
 });
+
+// ---- workflow ----
+export const workflowActionSchema = z.object({
+  comment: z.string().trim().max(2000).optional(),
+});
+
+export const taskDecisionSchema = z.object({
+  taskIds: z.array(objectIdSchema).min(1).max(100),
+  decision: z.enum(['approve', 'reject']),
+  comment: z.string().trim().max(2000).optional(),
+});
+export type TaskDecisionInput = z.infer<typeof taskDecisionSchema>;
+
+// ---- notifications ----
+export const notificationPreferencesSchema = z.object({
+  /** `kind:channel` pairs the user turned off, e.g. `approval.requested:email`. */
+  disabled: z
+    .array(z.string().regex(/^[a-z][a-z0-9_.]{1,59}:(inapp|email|whatsapp|push)$/))
+    .max(200),
+  /** One daily email of pending approvals instead of one email per request. */
+  digest: z.boolean(),
+});
+export type NotificationPreferences = z.infer<typeof notificationPreferencesSchema>;
+
+export const pushSubscriptionSchema = z.object({
+  endpoint: z.string().url().max(1000),
+  keys: z.object({ p256dh: z.string().max(200), auth: z.string().max(100) }),
+});
+export type PushSubscriptionInput = z.infer<typeof pushSubscriptionSchema>;

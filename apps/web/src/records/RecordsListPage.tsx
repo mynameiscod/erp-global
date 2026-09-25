@@ -5,7 +5,13 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { ColDef, ValueFormatterParams } from 'ag-grid-community';
 import { recordPermission, type Page } from '@erp/contracts';
-import { activeFields, findEntity, type EntityDef, type FieldDef } from '@erp/metadata';
+import {
+  activeFields,
+  findEntity,
+  workflowFor,
+  type EntityDef,
+  type FieldDef,
+} from '@erp/metadata';
 import { api } from '../api/client';
 import type { OrgUnitDto } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
@@ -19,6 +25,8 @@ export interface RecordDto {
   id: string;
   entity: string;
   number: string | null;
+  /** Workflow state; null when the entity has no workflow. */
+  status?: string | null;
   data: Record<string, unknown>;
   orgUnitId: string | null;
   createdAt: string;
@@ -88,14 +96,17 @@ export function RecordsListPage() {
 
   const entity = cfg.data ? findEntity(cfg.data, key) : undefined;
   const view = cfg.data?.listViews.find((v) => v.entity === key);
+  const workflow = cfg.data ? workflowFor(cfg.data, key) : undefined;
+  const [status, setStatus] = useState('');
   const rows = useQuery({
-    queryKey: ['records', key, search, view?.sort?.field, view?.sort?.dir],
+    queryKey: ['records', key, search, view?.sort?.field, view?.sort?.dir, status],
     enabled: !!entity,
     queryFn: () =>
       api<Page<RecordDto>>(`/records/${key}`, {
         query: {
           pageSize: 200,
           q: search || undefined,
+          status: status || undefined,
           sort: view?.sort ? `${view.sort.field}:${view.sort.dir}` : undefined,
         },
       }),
@@ -114,6 +125,7 @@ export function RecordsListPage() {
       view?.columns ??
       [
         'number',
+        ...(workflow ? ['status'] : []),
         ...(entity.titleField ? [entity.titleField] : []),
         ...activeFields(entity).map((f) => f.key),
       ]
@@ -138,6 +150,18 @@ export function RecordsListPage() {
         headerName: t('records.orgUnit'),
         valueGetter: (p) => unitName.get(p.data?.orgUnitId ?? '') ?? '',
       },
+      status: {
+        headerName: t('workflow.status'),
+        valueGetter: (p) => p.data?.status ?? '',
+        cellRenderer: (p: { data?: RecordDto }) => {
+          const st = workflow?.states.find((x) => x.key === p.data?.status);
+          return st ? (
+            <span className="badge" style={{ background: st.color ?? '#6c757d' }}>
+              {label(st.label)}
+            </span>
+          ) : null;
+        },
+      },
       createdBy: { headerName: t('audit.actor'), valueGetter: (p) => p.data?.createdBy },
       updatedBy: { headerName: t('audit.actor'), valueGetter: (p) => p.data?.updatedBy },
     };
@@ -161,7 +185,7 @@ export function RecordsListPage() {
         };
       })
       .filter((c): c is ColDef<RecordDto> => !!c);
-  }, [entity, cfg.data, view, label, titles.data, t, i18n.language, unitName]);
+  }, [entity, cfg.data, view, label, titles.data, t, i18n.language, unitName, workflow]);
 
   if (cfg.isLoading) return <Loading />;
   if (!entity || entity.kind !== 'custom')
@@ -181,16 +205,33 @@ export function RecordsListPage() {
         }
       />
       <ErrorAlert error={rows.error} />
-      <InputGroup className="mb-3" style={{ maxWidth: 360 }}>
-        <InputGroup.Text>
-          <i className="bi bi-search" />
-        </InputGroup.Text>
-        <Form.Control
-          placeholder={t('common.search')}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-      </InputGroup>
+      <div className="d-flex flex-wrap gap-2 mb-3">
+        <InputGroup style={{ maxWidth: 360 }}>
+          <InputGroup.Text>
+            <i className="bi bi-search" />
+          </InputGroup.Text>
+          <Form.Control
+            placeholder={t('common.search')}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+        </InputGroup>
+        {workflow && (
+          <Form.Select
+            style={{ maxWidth: 220 }}
+            aria-label={t('workflow.status')}
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+          >
+            <option value="">{t('workflow.anyStatus')}</option>
+            {workflow.states.map((st) => (
+              <option key={st.key} value={st.key}>
+                {label(st.label)}
+              </option>
+            ))}
+          </Form.Select>
+        )}
+      </div>
       {rows.data?.total === 0 && !search ? (
         <p className="text-body-secondary">{t('records.empty')}</p>
       ) : (

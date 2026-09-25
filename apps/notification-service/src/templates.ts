@@ -132,3 +132,25 @@ ${link ? `<p><a href="${escapeHtml(link)}" style="display:inline-block;padding:1
   const text = [...lines, link ? `${copy.action}: ${link}` : ''].filter(Boolean).join('\n\n');
   return { subject: copy.subject(vars), text, html };
 }
+
+const OPEN: Record<string, string> = { en: 'Open', hi: 'खोलें', ar: 'فتح' };
+const RTL = new Set(['ar', 'he', 'fa', 'ur']);
+
+/** Email for a workflow or automation message: the title as subject, the body, a button. */
+export function renderMessage(
+  title: string,
+  body: string,
+  link: string | undefined,
+  lang: string,
+): RenderedEmail {
+  if (link && !/^https?:\/\//.test(link)) throw new Error('Email links must be http(s)');
+  const lines = body.split(/\n+/).filter((l) => l.trim());
+  const dir = RTL.has(lang) ? 'rtl' : 'ltr';
+  const action = OPEN[lang] ?? OPEN.en;
+  const html = `<!doctype html><html dir="${dir}"><body style="font-family:Arial,sans-serif;line-height:1.5;color:#1f2933">
+${lines.map((l) => `<p>${escapeHtml(l)}</p>`).join('\n')}
+${link ? `<p><a href="${escapeHtml(link)}" style="display:inline-block;padding:10px 18px;background:#0d6efd;color:#fff;border-radius:6px;text-decoration:none">${escapeHtml(action)}</a></p>` : ''}
+</body></html>`;
+  const text = [...lines, link ? `${action}: ${link}` : ''].filter(Boolean).join('\n\n');
+  return { subject: title, text, html };
+}

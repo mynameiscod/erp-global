@@ -2,8 +2,11 @@ import { Inject, Injectable, Module, OnApplicationBootstrap } from '@nestjs/comm
 import { PinoLogger } from 'nestjs-pino';
 import { Schema, type Connection } from 'mongoose';
 import {
+  EventTypes,
+  EVENTS_STREAM,
   NOTIFY_STREAM,
   NotifyTypes,
+  subjectFor,
   type EmailRequestedPayload,
   type EventEnvelope,
   type WhatsappRequestedPayload,
@@ -11,7 +14,12 @@ import {
 import { alreadyProcessed, handleOnce, type EventBus } from '@erp/events';
 import { EVENT_BUS, MONGO_CONNECTION, ServiceCoreModule, TENANT_DATABASES } from '@erp/service-kit';
 import { tenantPlugin, type ModelDef, type TenantDatabases } from '@erp/tenancy';
+import { CLIENTS, createClients, type Clients } from './clients';
+import { InboxController } from './inbox.controller';
+import { InboxModel, PreferenceModel, PushModel, SentModel } from './inbox.models';
 import { createMailer, MAILER, type Mailer } from './mailer';
+import { createPush, PUSH } from './push';
+import { LiveHub, UserNotifier } from './user-notify';
 import { render } from './templates';
 import { createWhatsapp, WHATSAPP, WhatsappDisabledError, type WhatsappSender } from './whatsapp';
 
@@ -130,9 +138,14 @@ export class WhatsappSenderService {
 
 @Module({
   imports: [ServiceCoreModule.forRoot({ name: 'notification-service' })],
+  controllers: [InboxController],
   providers: [
     EmailSender,
     WhatsappSenderService,
+    UserNotifier,
+    LiveHub,
+    { provide: CLIENTS, useFactory: createClients },
+    { provide: PUSH, useFactory: createPush },
     { provide: MAILER, useFactory: createMailer },
     { provide: WHATSAPP, useFactory: createWhatsapp },
   ],
@@ -143,11 +156,15 @@ export class AppModule implements OnApplicationBootstrap {
     @Inject(MONGO_CONNECTION) private readonly conn: Connection,
     private readonly sender: EmailSender,
     private readonly whatsapp: WhatsappSenderService,
+    private readonly notifier: UserNotifier,
+    @Inject(CLIENTS) private readonly clients: Clients,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
     // Create indexes up front; creating a collection inside a transaction is slow and conflict-prone.
-    await this.conn.model(DeliveryModel.name, DeliveryModel.schema).init();
+    for (const m of [DeliveryModel, InboxModel, PreferenceModel, PushModel, SentModel]) {
+      await this.conn.model(m.name, m.schema as unknown as Schema).init();
+    }
     await this.bus.subscribe({
       durable: CONSUMER,
       stream: NOTIFY_STREAM,
@@ -159,6 +176,19 @@ export class AppModule implements OnApplicationBootstrap {
       stream: NOTIFY_STREAM,
       subjects: [NotifyTypes.WhatsappRequested],
       handler: (event) => this.whatsapp.handle(event),
+    });
+    await this.bus.subscribe({
+      durable: 'notification-service-user',
+      stream: NOTIFY_STREAM,
+      subjects: [NotifyTypes.UserNotify],
+      handler: (event) => this.notifier.handle(event),
+    });
+    // Company message templates change with the published config.
+    await this.bus.subscribe({
+      durable: 'notification-service-config',
+      stream: EVENTS_STREAM,
+      subjects: [subjectFor(EventTypes.ConfigPublished), subjectFor(EventTypes.ConfigRolledBack)],
+      handler: async (event) => this.clients.config.invalidate(event.tenantId),
     });
   }
 }

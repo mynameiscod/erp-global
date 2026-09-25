@@ -8,11 +8,15 @@ import type { OrgUnitDto } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { useConfigActions, useDraft, type ConfigIssue } from '../config/hooks';
 import { ErrorAlert, Loading, PageHeader } from '../components/ui';
+import { AutomationsTab } from './AutomationsTab';
 import { EntitiesTab } from './EntitiesTab';
 import { EntityEditor } from './EntityEditor';
 import { NumberingTab } from './NumberingTab';
 import { PicklistsTab } from './PicklistsTab';
+import { RulesTab } from './RulesTab';
 import { SettingsTab } from './SettingsTab';
+import { TemplatesTab } from './TemplatesTab';
+import { WorkflowsTab } from './WorkflowsTab';
 import { layerFor, StudioContext } from './StudioContext';
 import { VersionsTab } from './VersionsTab';
 
@@ -129,6 +133,10 @@ export function StudioPage() {
     ['entities', 'studio.entities', 'boxes'],
     ['picklists', 'studio.picklists', 'list-ul'],
     ['numbering', 'studio.numbering', '123'],
+    ['workflows', 'studio.workflows', 'diagram-2'],
+    ['rules', 'studio.rules', 'shield-check'],
+    ['automations', 'studio.automations', 'lightning-charge'],
+    ['templates', 'studio.templates', 'chat-square-text'],
     ['versions', 'studio.versions', 'clock-history'],
     ['settings', 'studio.settings', 'sliders'],
   ];
@@ -229,6 +237,10 @@ export function StudioPage() {
         <Route path="entities/:key" element={<EntityEditor />} />
         <Route path="picklists" element={<PicklistsTab />} />
         <Route path="numbering" element={<NumberingTab />} />
+        <Route path="workflows" element={<WorkflowsTab />} />
+        <Route path="rules" element={<RulesTab />} />
+        <Route path="automations" element={<AutomationsTab />} />
+        <Route path="templates" element={<TemplatesTab />} />
         <Route path="versions" element={<VersionsTab />} />
         <Route path="settings" element={<SettingsTab />} />
       </Routes>

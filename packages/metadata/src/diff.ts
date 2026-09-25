@@ -1,5 +1,5 @@
 import { pickText } from './i18n';
-import type { ConfigLayer, TenantConfig } from './types';
+import { emptyLayer, normalizeLayer, type ConfigLayer, type TenantConfig } from './types';
 
 type Keyed = { key?: string; entity?: string; label?: Record<string, string> };
 
@@ -39,11 +39,17 @@ function diffLayer(prev: ConfigLayer, next: ConfigLayer, out: string[], prefix: 
   diffList('form', prev.forms, next.forms, out, prefix);
   diffList('list view', prev.listViews, next.listViews, out, prefix);
   diffList('number series', prev.numbering, next.numbering, out, prefix);
+  const p = normalizeLayer(prev);
+  const n = normalizeLayer(next);
+  diffList('workflow', p.workflows, n.workflows, out, prefix);
+  diffList('rule', p.rules, n.rules, out, prefix);
+  diffList('automation', p.automations, n.automations, out, prefix);
+  diffList('message template', p.templates, n.templates, out, prefix);
   if (JSON.stringify(prev.settings ?? {}) !== JSON.stringify(next.settings ?? {}))
     out.push(`${prefix}Changed settings`);
 }
 
-const EMPTY: ConfigLayer = { entities: [], picklists: [], forms: [], listViews: [], numbering: [] };
+const EMPTY: ConfigLayer = emptyLayer();
 
 /** Human-readable list of what changed between two configurations. */
 export function diffConfigs(prev: TenantConfig, next: TenantConfig): string[] {
@@ -97,7 +103,7 @@ export function withArchivedLeftovers(target: TenantConfig, current: TenantConfi
   keep(result.company, current.company);
   for (const [id, layer] of Object.entries(current.orgUnits)) {
     if (!result.orgUnits[id])
-      result.orgUnits[id] = { ...EMPTY, path: layer.path, name: layer.name };
+      result.orgUnits[id] = { ...emptyLayer(), path: layer.path, name: layer.name };
     keep(result.orgUnits[id], layer);
   }
   return result;
@@ -105,7 +111,7 @@ export function withArchivedLeftovers(target: TenantConfig, current: TenantConfi
 
 export function emptyTenantConfig(): TenantConfig {
   return {
-    company: { ...EMPTY, entities: [], picklists: [], forms: [], listViews: [], numbering: [] },
+    company: emptyLayer(),
     orgUnits: {},
   };
 }

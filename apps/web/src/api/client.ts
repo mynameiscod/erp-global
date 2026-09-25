@@ -30,6 +30,15 @@ export function setAccessToken(token: string | null): void {
   accessToken = token;
 }
 
+/** For streaming requests that do not go through `api` (server-sent events). */
+export function getAccessToken(): string | null {
+  return accessToken;
+}
+
+export function refreshAccessToken(): Promise<string | null> {
+  return refreshOnce();
+}
+
 /** Registered by the auth provider: gets a fresh access token from the refresh cookie. */
 export function setRefresher(fn: () => Promise<string | null>): void {
   refresher = fn;

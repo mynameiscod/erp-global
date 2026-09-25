@@ -14,6 +14,7 @@ import {
   PageHeader,
   StatusBadge,
 } from '../components/ui';
+import { UserSelect } from '../components/UserSelect';
 import { CustomFields, customFieldErrors } from '../records/CustomFields';
 
 interface TreeNode extends OrgUnitDto {
@@ -215,6 +216,7 @@ function UnitDialog({
   const [error, setError] = useState<unknown>(null);
   const editing = dialog.kind === 'edit' ? dialog.unit : null;
   const [custom, setCustom] = useState<Record<string, unknown>>(editing?.custom ?? {});
+  const [headUserId, setHead] = useState<string | null>(editing?.headUserId ?? null);
   const [customErrors, setCustomErrors] = useState<Record<string, string>>({});
   const form = useForm<UnitForm>({
     defaultValues: {
@@ -225,7 +227,13 @@ function UnitDialog({
   });
   const submit = form.handleSubmit(async (v) => {
     setError(null);
-    const body = { name: v.name, type: v.type, ...(v.code ? { code: v.code } : {}), custom };
+    const body = {
+      name: v.name,
+      type: v.type,
+      ...(v.code ? { code: v.code } : {}),
+      custom,
+      ...(editing && headUserId !== (editing.headUserId ?? null) ? { headUserId } : {}),
+    };
     try {
       if (editing) await api(`/org/units/${editing.id}`, { method: 'PATCH', body });
       else
@@ -276,6 +284,11 @@ function UnitDialog({
           >
             <Form.Control {...form.register('code')} className="font-monospace" />
           </Field>
+          {editing && (
+            <Field label={t('org.head')} controlId="headUserId" hint={t('org.headHint')}>
+              <UserSelect id="headUserId" value={headUserId} onChange={setHead} />
+            </Field>
+          )}
           <CustomFields
             entityKey="org_unit"
             values={custom}

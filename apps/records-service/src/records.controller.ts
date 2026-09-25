@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
+import { Internal } from '@erp/auth';
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { paginationSchema } from '@erp/contracts';
@@ -40,6 +41,10 @@ const listQuery = paginationSchema.extend({
   orgUnitId: z
     .string()
     .regex(/^[a-f0-9]{24}$/)
+    .optional(),
+  status: z
+    .string()
+    .regex(/^[a-z][a-z0-9_]{1,39}$/)
     .optional(),
 });
 
@@ -113,5 +118,78 @@ export class RecordsController {
   @Delete(':id')
   remove(@Param('entity') entity: string, @Param('id') id: string) {
     return this.records.remove(entityOf(entity), id);
+  }
+}
+
+const depth = z.number().int().min(0).max(10).default(1);
+const systemWriteSchema = writeSchema.extend({
+  depth,
+  sourceKey: z.string().max(200).optional(),
+});
+const systemUpdateSchema = z.object({ data: z.record(z.string(), z.unknown()), depth });
+const statusSchema = z.object({
+  from: z.string().max(40).nullable(),
+  to: z.string().regex(/^[a-z][a-z0-9_]{1,39}$/),
+  action: z.string().max(40).nullable(),
+  depth: z.number().int().min(0).max(10).default(0),
+});
+const pageQuery = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(500).default(200),
+  includeDeleted: z.enum(['0', '1']).optional(),
+});
+
+/** For workflow-service: automations and workflow state changes. */
+@Controller('internal/records/:entity')
+@Internal()
+export class InternalRecordsController {
+  constructor(private readonly records: RecordsService) {}
+
+  @Get()
+  list(
+    @Param('entity') entity: string,
+    @Query(new ZodPipe(pageQuery)) q: z.infer<typeof pageQuery>,
+  ) {
+    return this.records.internalList(entityOf(entity), q.page, q.pageSize);
+  }
+
+  @Get(':id')
+  get(
+    @Param('entity') entity: string,
+    @Param('id') id: string,
+    @Query(new ZodPipe(pageQuery)) q: z.infer<typeof pageQuery>,
+  ) {
+    return this.records.internalGet(entityOf(entity), id, q.includeDeleted === '1');
+  }
+
+  @Post()
+  create(
+    @Param('entity') entity: string,
+    @Body(new ZodPipe(systemWriteSchema)) body: z.infer<typeof systemWriteSchema>,
+  ) {
+    return this.records.create(
+      entityOf(entity),
+      { orgUnitId: body.orgUnitId, data: body.data },
+      { depth: body.depth, sourceKey: body.sourceKey },
+    );
+  }
+
+  @Patch(':id')
+  update(
+    @Param('entity') entity: string,
+    @Param('id') id: string,
+    @Body(new ZodPipe(systemUpdateSchema)) body: z.infer<typeof systemUpdateSchema>,
+  ) {
+    return this.records.update(entityOf(entity), id, { data: body.data }, { depth: body.depth });
+  }
+
+  @Post(':id/status')
+  @HttpCode(200)
+  status(
+    @Param('entity') entity: string,
+    @Param('id') id: string,
+    @Body(new ZodPipe(statusSchema)) body: z.infer<typeof statusSchema>,
+  ) {
+    return this.records.setStatus(entityOf(entity), id, body);
   }
 }

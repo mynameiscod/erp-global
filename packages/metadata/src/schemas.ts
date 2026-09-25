@@ -136,11 +136,218 @@ export const settingsSchema = z
   })
   .strict();
 
+// ---- Step 4: workflows, rules, automations, message templates ----
+
+const objectId = z.string().regex(/^[a-f0-9]{24}$/, 'Invalid id');
+const condition = z.string().trim().max(2000).optional();
+const hours = z
+  .number()
+  .min(0.25)
+  .max(24 * 60)
+  .optional();
+
+export const approverSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('role'), roleId: objectId }).strict(),
+  z.object({ type: z.literal('manager') }).strict(),
+  z.object({ type: z.literal('unit_head') }).strict(),
+  z.object({ type: z.literal('users'), userIds: z.array(objectId).min(1).max(50) }).strict(),
+  z.object({ type: z.literal('field'), field: keySchema }).strict(),
+]);
+
+export const workflowSchema = z
+  .object({
+    entity: keySchema,
+    initialState: keySchema,
+    active: z.boolean().optional(),
+    states: z
+      .array(
+        z
+          .object({
+            key: keySchema,
+            label: localizedTextSchema,
+            color: z
+              .string()
+              .regex(/^#[0-9a-fA-F]{6}$/)
+              .optional(),
+            locked: z.boolean().optional(),
+            editableFields: z.array(keySchema).max(300).optional(),
+          })
+          .strict(),
+      )
+      .min(2)
+      .max(30),
+    actions: z
+      .array(
+        z
+          .object({
+            key: keySchema,
+            label: localizedTextSchema,
+            from: z.array(keySchema).min(1).max(30),
+            to: keySchema,
+            roleIds: z.array(objectId).max(50).optional(),
+            requesterOnly: z.boolean().optional(),
+            condition,
+            commentRequired: z.boolean().optional(),
+            approval: z
+              .object({
+                approvedState: keySchema,
+                rejectedState: keySchema,
+                levels: z
+                  .array(
+                    z
+                      .object({
+                        key: keySchema,
+                        label: localizedTextSchema,
+                        condition,
+                        approvers: z.array(approverSchema).min(1).max(20),
+                        mode: z.enum(['all', 'any']),
+                        remindAfterHours: hours,
+                        escalateAfterHours: hours,
+                        escalateTo: z.array(approverSchema).max(20).optional(),
+                      })
+                      .strict(),
+                  )
+                  .min(1)
+                  .max(10),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(50),
+  })
+  .strict();
+
+export const ruleSchema = z
+  .object({
+    key: keySchema,
+    entity: keySchema,
+    label: optionalLocalized,
+    on: z.enum(['create', 'update', 'save']),
+    condition,
+    effect: z.enum(['block', 'set', 'require', 'hide', 'readonly']),
+    field: keySchema.optional(),
+    value: z.string().trim().max(2000).optional(),
+    message: optionalLocalized,
+    active: z.boolean().optional(),
+  })
+  .strict();
+
+const assignmentsSchema = z
+  .array(z.object({ field: keySchema, value: z.string().trim().min(1).max(2000) }).strict())
+  .max(100);
+
+const recipientSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('creator') }).strict(),
+  z.object({ type: z.literal('manager') }).strict(),
+  z.object({ type: z.literal('field'), field: keySchema }).strict(),
+  z.object({ type: z.literal('role'), roleId: objectId }).strict(),
+  z.object({ type: z.literal('users'), userIds: z.array(objectId).min(1).max(50) }).strict(),
+]);
+
+export const automationSchema = z
+  .object({
+    key: keySchema,
+    entity: keySchema,
+    label: localizedTextSchema,
+    active: z.boolean().optional(),
+    condition,
+    trigger: z.discriminatedUnion('type', [
+      z.object({ type: z.literal('created') }).strict(),
+      z.object({ type: z.literal('updated') }).strict(),
+      z.object({ type: z.literal('deleted') }).strict(),
+      z.object({ type: z.literal('field_changed'), field: keySchema }).strict(),
+      z.object({ type: z.literal('status_changed'), to: keySchema.optional() }).strict(),
+      z
+        .object({
+          type: z.literal('schedule'),
+          every: z.enum(['day', 'hour', '15min']),
+          at: z
+            .string()
+            .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:MM')
+            .optional(),
+        })
+        .strict(),
+    ]),
+    actions: z
+      .array(
+        z.discriminatedUnion('type', [
+          z
+            .object({
+              type: z.literal('notify'),
+              template: z.string().regex(/^[a-z][a-z0-9_.]{1,59}$/),
+              recipients: z.array(recipientSchema).min(1).max(20),
+              channels: z.array(z.enum(['inapp', 'email', 'whatsapp', 'push'])).min(1),
+            })
+            .strict(),
+          z.object({ type: z.literal('update'), set: assignmentsSchema.min(1) }).strict(),
+          z
+            .object({
+              type: z.literal('create'),
+              entity: keySchema,
+              orgUnit: z.enum(['same', 'none']).optional(),
+              set: assignmentsSchema,
+            })
+            .strict(),
+          z
+            .object({
+              type: z.literal('webhook'),
+              url: z
+                .string()
+                .url()
+                .max(500)
+                .refine(
+                  // http:// only for a receiver on this machine (development and tests);
+                  // at run time private addresses are refused unless explicitly allowed.
+                  (u) =>
+                    u.startsWith('https://') ||
+                    /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(u),
+                  'Webhooks must use https://',
+                ),
+            })
+            .strict(),
+          z.object({ type: z.literal('workflow_action'), action: keySchema }).strict(),
+        ]),
+      )
+      .min(1)
+      .max(20),
+  })
+  .strict();
+
+const longLocalized = z
+  .record(langTag, z.string().max(4000))
+  .refine(
+    (t) => Object.values(t).some((v) => v.trim().length > 0),
+    'Enter the text in at least one language',
+  );
+
+export const messageTemplateSchema = z
+  .object({
+    key: z.string().regex(/^[a-z][a-z0-9_.]{1,59}$/, 'Use a-z, 0-9, _ and .'),
+    label: localizedTextSchema,
+    title: localizedTextSchema,
+    body: longLocalized,
+    whatsapp: z
+      .object({
+        template: z.string().regex(/^[a-z0-9_]{1,512}$/),
+        params: z.array(z.string().max(100)).max(20),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
 export const configLayerSchema = z.object({
   entities: z.array(entityPatchSchema).max(200),
   picklists: z.array(picklistSchema).max(500),
   forms: z.array(formLayoutSchema).max(200),
   listViews: z.array(listViewSchema).max(200),
   numbering: z.array(numberingSchema).max(200),
+  workflows: z.array(workflowSchema).max(200).default([]),
+  rules: z.array(ruleSchema).max(1000).default([]),
+  automations: z.array(automationSchema).max(500).default([]),
+  templates: z.array(messageTemplateSchema).max(500).default([]),
   settings: settingsSchema.optional(),
 });

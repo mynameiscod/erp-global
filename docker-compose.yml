@@ -58,6 +58,7 @@ services:
       MONGO_PASSWORD_ACCESS: ${MONGO_PASSWORD_ACCESS}
       MONGO_PASSWORD_AUDIT: ${MONGO_PASSWORD_AUDIT}
       MONGO_PASSWORD_REFERENCE: ${MONGO_PASSWORD_REFERENCE}
+      MONGO_PASSWORD_WORKFLOW: ${MONGO_PASSWORD_WORKFLOW}
       MONGO_PASSWORD_NOTIFICATION: ${MONGO_PASSWORD_NOTIFICATION}
       MONGO_PASSWORD_CONFIG: ${MONGO_PASSWORD_CONFIG}
       MONGO_PASSWORD_RECORDS: ${MONGO_PASSWORD_RECORDS}
@@ -129,6 +130,7 @@ services:
       ORG_SERVICE_URL: http://org-service:3003
       IDENTITY_SERVICE_URL: http://identity-service:3001
       FILE_SERVICE_URL: http://file-service:3010
+      ACCESS_SERVICE_URL: http://access-service:3004
 
   file-service:
     <<: *service
@@ -199,6 +201,7 @@ services:
       MONGO_URI: mongodb://svc_org:${MONGO_PASSWORD_ORG}@mongo:27017/?replicaSet=rs0&authSource=admin
       MONGO_DB: erp_org
       CONFIG_SERVICE_URL: http://config-service:3008
+      IDENTITY_SERVICE_URL: http://identity-service:3001
 
   access-service:
     <<: *service
@@ -251,6 +254,27 @@ services:
       WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN:-}
       WHATSAPP_OTP_TEMPLATE: ${WHATSAPP_OTP_TEMPLATE:-otp_code}
       WHATSAPP_TEMPLATE_LANGUAGES: ${WHATSAPP_TEMPLATE_LANGUAGES:-en_US}
+      IDENTITY_SERVICE_URL: http://identity-service:3001
+      CONFIG_SERVICE_URL: http://config-service:3008
+      APP_URL: ${APP_URL}
+      # Web push (optional): VAPID keys from gen-env.
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:no-reply@example.com}
+
+  workflow-service:
+    <<: *service
+    build: { <<: *build, args: { APP: workflow-service } }
+    environment:
+      <<: *service-env
+      PORT: 3011
+      MONGO_URI: mongodb://svc_workflow:${MONGO_PASSWORD_WORKFLOW}@mongo:27017/?replicaSet=rs0&authSource=admin
+      MONGO_DB: erp_workflow
+      CONFIG_SERVICE_URL: http://config-service:3008
+      RECORDS_SERVICE_URL: http://records-service:3009
+      ACCESS_SERVICE_URL: http://access-service:3004
+      IDENTITY_SERVICE_URL: http://identity-service:3001
+      ORG_SERVICE_URL: http://org-service:3003
 
   api-gateway:
     restart: unless-stopped
@@ -267,6 +291,8 @@ services:
         config-service,
         records-service,
         file-service,
+        workflow-service,
+        notification-service,
         redis,
       ]
     environment:
@@ -286,6 +312,8 @@ services:
       CONFIG_SERVICE_URL: http://config-service:3008
       RECORDS_SERVICE_URL: http://records-service:3009
       FILE_SERVICE_URL: http://file-service:3010
+      WORKFLOW_SERVICE_URL: http://workflow-service:3011
+      NOTIFICATION_SERVICE_URL: http://notification-service:3007
 
   web:
     restart: unless-stopped

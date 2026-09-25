@@ -31,6 +31,13 @@ export const WHATSAPP = Symbol('WHATSAPP');
 export interface WhatsappSender {
   readonly provider: string;
   sendOtp(to: string, code: string, locale: string): Promise<{ messageId: string }>;
+  /** A Meta-approved template with body parameters in order. */
+  sendTemplate(
+    to: string,
+    template: string,
+    locale: string,
+    params: string[],
+  ): Promise<{ messageId: string }>;
 }
 
 export class WhatsappDisabledError extends Error {
@@ -55,9 +62,6 @@ class MetaWhatsapp implements WhatsappSender {
   constructor(private readonly env: z.infer<typeof whatsappEnvSchema>) {}
 
   async sendOtp(to: string, code: string, locale: string) {
-    const langs = this.env.WHATSAPP_TEMPLATE_LANGUAGES.split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
     const components: object[] = [{ type: 'body', parameters: [{ type: 'text', text: code }] }];
     if (this.env.WHATSAPP_OTP_BUTTON) {
       components.push({
@@ -67,6 +71,20 @@ class MetaWhatsapp implements WhatsappSender {
         parameters: [{ type: 'text', text: code }],
       });
     }
+    return this.post(to, this.env.WHATSAPP_OTP_TEMPLATE, locale, components);
+  }
+
+  async sendTemplate(to: string, template: string, locale: string, params: string[]) {
+    const components = params.length
+      ? [{ type: 'body', parameters: params.map((text) => ({ type: 'text', text: text || '-' })) }]
+      : [];
+    return this.post(to, template, locale, components);
+  }
+
+  private async post(to: string, template: string, locale: string, components: object[]) {
+    const langs = this.env.WHATSAPP_TEMPLATE_LANGUAGES.split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
     const res = await fetch(
       `${this.env.WHATSAPP_API_URL}/${this.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
       {
@@ -80,7 +98,7 @@ class MetaWhatsapp implements WhatsappSender {
           to: to.replace(/^\+/, ''),
           type: 'template',
           template: {
-            name: this.env.WHATSAPP_OTP_TEMPLATE,
+            name: template,
             language: { code: templateLanguage(locale, langs) },
             components,
           },
@@ -97,10 +115,16 @@ class MetaWhatsapp implements WhatsappSender {
   }
 }
 
-/** Development only: prints the code so sign-in can be tested without WhatsApp. */
+/** Development only: prints messages so sign-in and notifications can be tested without WhatsApp. */
 export class ConsoleWhatsapp implements WhatsappSender {
   readonly provider = 'console';
-  readonly sent: { to: string; code: string; locale: string }[] = [];
+  readonly sent: {
+    to: string;
+    code?: string;
+    template?: string;
+    params?: string[];
+    locale: string;
+  }[] = [];
   private readonly log = new Logger('WhatsApp(console)');
 
   async sendOtp(to: string, code: string, locale: string) {
@@ -108,11 +132,20 @@ export class ConsoleWhatsapp implements WhatsappSender {
     this.log.warn(`WhatsApp code for ${to}: ${code}`);
     return { messageId: `console-${this.sent.length}` };
   }
+
+  async sendTemplate(to: string, template: string, locale: string, params: string[]) {
+    this.sent.push({ to, template, params, locale });
+    this.log.log(`WhatsApp ${template} for ${to}: ${params.join(' | ')}`);
+    return { messageId: `console-${this.sent.length}` };
+  }
 }
 
 class DisabledWhatsapp implements WhatsappSender {
   readonly provider = 'disabled';
   async sendOtp(): Promise<{ messageId: string }> {
+    throw new WhatsappDisabledError();
+  }
+  async sendTemplate(): Promise<{ messageId: string }> {
     throw new WhatsappDisabledError();
   }
 }

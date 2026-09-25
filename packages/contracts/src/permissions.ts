@@ -113,6 +113,13 @@ export const PERMISSIONS = [
     description: 'Publish and roll back configuration versions',
   },
 
+  {
+    key: 'workflow.automation.manage',
+    module: 'workflow',
+    scope: 'tenant',
+    description: 'View automation runs, re-run failures and see the webhook signing secret',
+  },
+
   { key: 'audit.event.read', module: 'audit', scope: 'tenant', description: 'View the audit log' },
   {
     key: 'audit.chain.verify',

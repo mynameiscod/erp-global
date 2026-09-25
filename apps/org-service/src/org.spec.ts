@@ -69,7 +69,16 @@ describe('org-service', () => {
       .overrideProvider(PLACEMENT_RESOLVER)
       .useClass(SharedPlacementResolver)
       .overrideProvider(CLIENTS)
-      .useValue({ config })
+      .useValue({
+        config,
+        identity: {
+          get: async (path: string) => {
+            const id = path.split('/').pop();
+            if (id === 'f'.repeat(24)) throw new Error('not found');
+            return { id, status: id === 'd'.repeat(24) ? 'deactivated' : 'active' };
+          },
+        },
+      })
       .compile();
     app = ref.createNestApplication();
     await app.init();
@@ -275,5 +284,63 @@ describe('org-service', () => {
       .send({ custom: { capacity: 300 } })
       .expect(200);
     expect(upd.body.custom).toEqual({ capacity: 300 });
+  });
+
+  it('sets a unit head and lists the units above a unit with their heads and codes', async () => {
+    const auth = admin('tA');
+    const region = await http()
+      .post('/api/v1/org/units')
+      .set('authorization', auth)
+      .send({ parentId: roots.tA.rootUnitId, name: 'North', code: 'NORTH', type: 'Region' })
+      .expect(201);
+    const branch = await http()
+      .post('/api/v1/org/units')
+      .set('authorization', auth)
+      .send({ parentId: region.body.id, name: 'Delhi', code: 'DEL', type: 'Branch' })
+      .expect(201);
+    const head = 'a'.repeat(24);
+    const set = await http()
+      .patch(`/api/v1/org/units/${region.body.id}`)
+      .set('authorization', auth)
+      .send({ headUserId: head })
+      .expect(200);
+    expect(set.body.headUserId).toBe(head);
+    await http()
+      .patch(`/api/v1/org/units/${region.body.id}`)
+      .set('authorization', auth)
+      .send({ headUserId: 'd'.repeat(24) })
+      .expect(400);
+    await http()
+      .patch(`/api/v1/org/units/${region.body.id}`)
+      .set('authorization', auth)
+      .send({ headUserId: 'f'.repeat(24) })
+      .expect(400);
+
+    const ancestors = await http()
+      .get(`/internal/org/units/${branch.body.id}/ancestors`)
+      .set('x-service-token', svc('tA'))
+      .expect(200);
+    expect(
+      ancestors.body.map((u: { code: string | null; headUserId: string | null }) => [
+        u.code,
+        u.headUserId,
+      ]),
+    ).toEqual([
+      [null, null],
+      ['NORTH', head],
+      ['DEL', null],
+    ]);
+
+    const cleared = await http()
+      .patch(`/api/v1/org/units/${region.body.id}`)
+      .set('authorization', auth)
+      .send({ headUserId: null })
+      .expect(200);
+    expect(cleared.body.headUserId).toBeNull();
+    // Another company cannot read these units.
+    await http()
+      .get(`/internal/org/units/${branch.body.id}/ancestors`)
+      .set('x-service-token', svc('tB'))
+      .expect(404);
   });
 });

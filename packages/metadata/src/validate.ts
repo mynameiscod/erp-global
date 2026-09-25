@@ -2,6 +2,7 @@ import { compileFormula, FormulaError } from './formula';
 import { layersFor, mergeLayers } from './merge';
 import { validateNumberingPattern } from './numbering';
 import { configLayerSchema } from './schemas';
+import { checkAutomationItems } from './validate-automation';
 import { NATIVE_FIELDS, RESERVED_FIELD_KEYS, SYSTEM_ENTITY_KEYS } from './system';
 import {
   SYSTEM_COLUMNS,
@@ -10,6 +11,7 @@ import {
   type FieldDef,
   type FieldType,
   type TenantConfig,
+  normalizeLayer,
 } from './types';
 
 export interface ConfigIssue {
@@ -49,7 +51,8 @@ function checkLayerShape(scope: string, layer: ConfigLayer, issues: ConfigIssue[
   return false;
 }
 
-function checkDuplicates(scope: string, layer: ConfigLayer, issues: ConfigIssue[]): void {
+function checkDuplicates(scope: string, raw: ConfigLayer, issues: ConfigIssue[]): void {
+  const layer = normalizeLayer(raw);
   const dup = (kind: string, keys: string[]) => {
     const seen = new Set<string>();
     for (const k of keys) {
@@ -77,6 +80,22 @@ function checkDuplicates(scope: string, layer: ConfigLayer, issues: ConfigIssue[
   dup(
     'numbering',
     layer.numbering.map((n) => n.key),
+  );
+  dup(
+    'workflows',
+    layer.workflows.map((w) => w.entity),
+  );
+  dup(
+    'rules',
+    layer.rules.map((r) => r.key),
+  );
+  dup(
+    'automations',
+    layer.automations.map((a) => a.key),
+  );
+  dup(
+    'templates',
+    layer.templates.map((t) => t.key),
   );
   for (const e of layer.entities)
     dup(
@@ -120,9 +139,13 @@ function checkMerged(scope: string, merged: ConfigLayer, issues: ConfigIssue[]):
       }
       if (f.type === 'formula' && f.formula) {
         try {
-          const deps = compileFormula(f.formula).fields;
+          const compiled = compileFormula(f.formula);
+          const deps = compiled.fields;
           for (const d of deps)
             if (!fieldKeys.has(d)) add(`${p}.formula`, `Unknown field "${d}" in formula`);
+          if (compiled.context.length) {
+            add(`${p}.formula`, `${compiled.context[0]} can only be used in rules and workflows`);
+          }
           formulaDeps.set(f.key, deps);
         } catch (err) {
           add(`${p}.formula`, err instanceof FormulaError ? err.message : 'Invalid formula');
@@ -167,6 +190,7 @@ function checkMerged(scope: string, merged: ConfigLayer, issues: ConfigIssue[]):
   for (const n of merged.numbering) {
     for (const m of validateNumberingPattern(n.pattern)) add(`numbering.${n.key}.pattern`, m);
   }
+  checkAutomationItems(normalizeLayer(merged), add);
 }
 
 function checkField(

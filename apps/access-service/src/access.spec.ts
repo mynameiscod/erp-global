@@ -317,4 +317,62 @@ describe('access-service', () => {
       .send(body)
       .expect(401);
   });
+
+  it('finds the holders of a role at a unit or the nearest unit above it', async () => {
+    const auth = await adminAuth('tB');
+    const role = (
+      await http()
+        .post('/api/v1/access/roles')
+        .set('authorization', auth)
+        .send({ name: 'Approver', permissions: ['org.unit.read'] })
+        .expect(201)
+    ).body;
+    const assign = (userId: string, orgUnitId: string) =>
+      http()
+        .post('/api/v1/access/assignments')
+        .set('authorization', auth)
+        .send({ userId, roleId: role.id, orgUnitId })
+        .expect(201);
+    await assign(ALICE, ROOT.id);
+    await assign(BOB, NORTH.id);
+    const holders = (path: string) =>
+      http()
+        .get(
+          `/internal/access/role-holders?roleId=${role.id}${path ? `&path=${encodeURIComponent(path)}` : ''}`,
+        )
+        .set('x-service-token', svc('tB'))
+        .expect(200);
+    expect((await holders(NORTH.path)).body).toEqual({ orgUnitId: NORTH.id, userIds: [BOB] });
+    expect((await holders(SOUTH.path)).body).toEqual({ orgUnitId: ROOT.id, userIds: [ALICE] });
+    expect((await holders('')).body).toEqual({ orgUnitId: ROOT.id, userIds: [ALICE] });
+
+    const roles = await http()
+      .get(`/internal/access/users/${BOB}/roles`)
+      .set('x-service-token', svc('tB'))
+      .expect(200);
+    expect(roles.body).toEqual([
+      expect.objectContaining({
+        roleId: role.id,
+        name: 'Approver',
+        orgUnitId: NORTH.id,
+        path: NORTH.path,
+      }),
+    ]);
+    // Another company has no holders of this role.
+    expect(
+      (
+        await http()
+          .get(
+            `/internal/access/role-holders?roleId=${role.id}&path=${encodeURIComponent(NORTH.path)}`,
+          )
+          .set('x-service-token', svc('tA'))
+          .expect(200)
+      ).body.userIds,
+    ).toEqual([]);
+    const mine = await http()
+      .get('/api/v1/access/me/roles')
+      .set('authorization', bearer('tB', BOB, []))
+      .expect(200);
+    expect(mine.body.map((r: { name: string }) => r.name)).toEqual(['Approver']);
+  });
 });

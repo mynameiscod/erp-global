@@ -13,6 +13,7 @@ import { useAuth } from '../auth/AuthContext';
 import { DataGrid } from '../components/DataGrid';
 import { applyFieldErrors, ErrorAlert, Field, PageHeader, StatusBadge } from '../components/ui';
 import { formatDateTime } from '../lib/format';
+import { UserSelect } from '../components/UserSelect';
 import { CustomFields, customFieldErrors } from '../records/CustomFields';
 
 export function UsersPage() {
@@ -370,6 +371,7 @@ function UserCustomFields({ user }: { user: UserDto }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [values, setValues] = useState<Record<string, unknown>>(user.custom ?? {});
+  const [managerId, setManager] = useState<string | null>(user.managerId ?? null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -380,7 +382,10 @@ function UserCustomFields({ user }: { user: UserDto }) {
     try {
       await api<UserDto>(`/identity/users/${user.id}`, {
         method: 'PATCH',
-        body: { custom: values },
+        body: {
+          custom: values,
+          ...(managerId !== (user.managerId ?? null) ? { managerId } : {}),
+        },
       });
       await qc.invalidateQueries({ queryKey: ['users'] });
       setSaved(true);
@@ -394,12 +399,15 @@ function UserCustomFields({ user }: { user: UserDto }) {
     <div className="mb-3">
       <ErrorAlert error={error} />
       {saved && <Alert variant="success">{t('common.saved')}</Alert>}
+      <Form.Group className="mb-3" controlId="managerId">
+        <Form.Label>{t('users.manager')}</Form.Label>
+        <UserSelect id="managerId" value={managerId} exclude={user.id} onChange={setManager} />
+        <Form.Text muted>{t('users.managerHint')}</Form.Text>
+      </Form.Group>
       <CustomFields entityKey="user" values={values} errors={errors} onChange={setValues} />
-      {Object.keys(user.custom ?? {}).length > 0 || Object.keys(values).length > 0 ? (
-        <Button size="sm" onClick={() => void save()}>
-          {t('common.save')}
-        </Button>
-      ) : null}
+      <Button size="sm" onClick={() => void save()}>
+        {t('common.save')}
+      </Button>
     </div>
   );
 }

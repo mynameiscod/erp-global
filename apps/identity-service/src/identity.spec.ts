@@ -431,4 +431,142 @@ describe('identity-service', () => {
       .expect(200);
     expect(upd.body).toMatchObject({ name: 'Kiran K', custom: { employee_code: 'E-102' } });
   });
+
+  it('sets a manager, refuses reporting loops, and manages out-of-office delegation', async () => {
+    const auth = `Bearer ${(await login('alpha', 'admin@shared.test').expect(200)).body.accessToken}`;
+    const invite = async (email: string) =>
+      (
+        await http()
+          .post('/api/v1/identity/users/invite')
+          .set('authorization', auth)
+          .send({ name: email.split('@')[0], email })
+          .expect(201)
+      ).body.id as string;
+    const lead = await invite('lead@alpha.test');
+    const member = await invite('member@alpha.test');
+    const set = await http()
+      .patch(`/api/v1/identity/users/${member}`)
+      .set('authorization', auth)
+      .send({ managerId: lead })
+      .expect(200);
+    expect(set.body.managerId).toBe(lead);
+    const loop = await http()
+      .patch(`/api/v1/identity/users/${lead}`)
+      .set('authorization', auth)
+      .send({ managerId: member })
+      .expect(400);
+    expect(loop.body.error.message).toMatch(/loop/);
+    await http()
+      .patch(`/api/v1/identity/users/${lead}`)
+      .set('authorization', auth)
+      .send({ managerId: lead })
+      .expect(400);
+
+    const svcAuth = svc(TA);
+    const batch = await http()
+      .post('/internal/users/batch')
+      .set('x-service-token', svcAuth)
+      .send({ ids: [member, lead, 'nope'] })
+      .expect(200);
+    expect(batch.body.find((u: { id: string }) => u.id === member)).toMatchObject({
+      managerId: lead,
+      language: 'en',
+    });
+    expect(batch.body).toHaveLength(2);
+
+    // The admin goes on leave and hands approvals to the lead.
+    const admin = admins.alpha;
+    const hour = 3_600_000;
+    await http()
+      .put('/api/v1/identity/me/delegation')
+      .set('authorization', auth)
+      .send({
+        toUserId: admin,
+        from: new Date().toISOString(),
+        until: new Date(Date.now() + hour).toISOString(),
+      })
+      .expect(400);
+    const d = await http()
+      .put('/api/v1/identity/me/delegation')
+      .set('authorization', auth)
+      .send({
+        toUserId: lead,
+        from: new Date(Date.now() - hour).toISOString(),
+        until: new Date(Date.now() + 24 * hour).toISOString(),
+        note: 'Holiday',
+      })
+      .expect(400);
+    // The lead has not accepted the invite yet, so is not active.
+    expect(d.body.error.message).toMatch(/active user/);
+    await http()
+      .post(`/api/v1/identity/users/${lead}/deactivate`)
+      .set('authorization', auth)
+      .expect(200);
+    await http()
+      .post(`/api/v1/identity/users/${lead}/reactivate`)
+      .set('authorization', auth)
+      .expect(200);
+
+    // Delegate to the admin of the other company? Unknown here: refused.
+    await http()
+      .put('/api/v1/identity/me/delegation')
+      .set('authorization', auth)
+      .send({
+        toUserId: admins.beta,
+        from: new Date().toISOString(),
+        until: new Date(Date.now() + hour).toISOString(),
+      })
+      .expect(400);
+
+    // An active colleague: bootstrap one directly.
+    const colleague = (
+      await http()
+        .post('/internal/users/bootstrap-admin')
+        .set('x-service-token', svcAuth)
+        .send({
+          name: 'Colleague',
+          email: 'colleague@alpha.test',
+          password: PASSWORD,
+          language: 'en',
+          timezone: 'UTC',
+        })
+        .expect(201)
+    ).body.userId;
+    const ok = await http()
+      .put('/api/v1/identity/me/delegation')
+      .set('authorization', auth)
+      .send({
+        toUserId: colleague,
+        from: new Date(Date.now() - hour).toISOString(),
+        until: new Date(Date.now() + 24 * hour).toISOString(),
+      })
+      .expect(200);
+    expect(ok.body).toMatchObject({ toUserId: colleague, toName: 'Colleague', active: true });
+    expect(
+      (
+        await http()
+          .get(`/internal/users/${admin}/delegate`)
+          .set('x-service-token', svcAuth)
+          .expect(200)
+      ).body,
+    ).toEqual({ toUserId: colleague });
+    expect(
+      (
+        await http()
+          .get(`/internal/users/${colleague}/delegators`)
+          .set('x-service-token', svcAuth)
+          .expect(200)
+      ).body,
+    ).toEqual([admin]);
+
+    await http().delete('/api/v1/identity/me/delegation').set('authorization', auth).expect(200);
+    expect(
+      (
+        await http()
+          .get(`/internal/users/${admin}/delegate`)
+          .set('x-service-token', svcAuth)
+          .expect(200)
+      ).body,
+    ).toEqual({ toUserId: null });
+  });
 });

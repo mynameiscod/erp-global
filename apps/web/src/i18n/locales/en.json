@@ -29,7 +29,10 @@
     "timezone": "Time zone",
     "country": "Country",
     "industry": "Industry",
-    "reference": "Reference: {{id}}"
+    "reference": "Reference: {{id}}",
+    "next": "Next",
+    "previous": "Previous",
+    "none": "— None —"
   },
   "status": {
     "active": "Active",
@@ -53,7 +56,8 @@
     "administration": "Administration",
     "logout": "Sign out",
     "studio": "Configuration studio",
-    "modules": "Modules"
+    "modules": "Modules",
+    "approvals": "My approvals"
   },
   "auth": {
     "company": "Company URL name",
@@ -147,7 +151,9 @@
     "parent": "Parent",
     "typeHint": "e.g. Region, Branch, Campus, Store, Department",
     "showInactive": "Show inactive units",
-    "children": "{{count}} below"
+    "children": "{{count}} below",
+    "head": "Head of this unit",
+    "headHint": "Used for \"unit head\" approvals."
   },
   "users": {
     "title": "Users",
@@ -164,7 +170,9 @@
     "orgUnit": "Where",
     "assignments": "Role assignments",
     "noAssignments": "No roles assigned yet.",
-    "remove": "Remove"
+    "remove": "Remove",
+    "manager": "Reports to",
+    "managerHint": "Used for \"manager\" approvals."
   },
   "roles": {
     "title": "Roles & permissions",
@@ -351,7 +359,11 @@
     "current": "Live",
     "labelsIn": "In other languages",
     "empty": "Nothing here yet.",
-    "systemEntityHint": "Built-in entity: you can add fields to it."
+    "systemEntityHint": "Built-in entity: you can add fields to it.",
+    "workflows": "Workflows",
+    "rules": "Rules",
+    "automations": "Automations",
+    "templates": "Messages"
   },
   "records": {
     "new": "New {{name}}",
@@ -429,5 +441,235 @@
     "role": "Default role",
     "orgUnit": "Organization unit",
     "choose": "Choose…"
+  },
+  "approvals": {
+    "title": "My approvals",
+    "subtitle": "Requests waiting for you, and for people you stand in for.",
+    "pending": "Waiting",
+    "done": "Decided",
+    "approve": "Approve",
+    "reject": "Reject",
+    "approveSelected": "Approve ({{count}})",
+    "rejectSelected": "Reject ({{count}})",
+    "approveTitle": "Approve {{count}} request(s)",
+    "rejectTitle": "Reject {{count}} request(s)",
+    "comment": "Comment",
+    "request": "Request",
+    "level": "Step",
+    "requester": "Requested by",
+    "waitingSince": "Waiting since",
+    "decided": "Decision",
+    "selectAll": "Select all",
+    "nothing": "Nothing is waiting for you.",
+    "nothingDone": "No decisions yet.",
+    "onBehalfOf": "for {{name}}",
+    "result": "{{count}} decided.",
+    "status": {
+      "pending": "Waiting",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "cancelled": "Withdrawn",
+      "escalated": "Escalated"
+    }
+  },
+  "notifications": {
+    "title": "Notifications",
+    "all": "See all notifications",
+    "allTab": "All",
+    "unreadTab": "Unread ({{count}})",
+    "empty": "No notifications.",
+    "readAll": "Mark all as read"
+  },
+  "delegation": {
+    "title": "Out of office",
+    "help": "While you are away, the person you choose can approve requests assigned to you. You can still act yourself.",
+    "to": "Who approves for me",
+    "from": "From",
+    "until": "Until",
+    "note": "Note (optional)",
+    "save": "Hand over my approvals",
+    "end": "End now",
+    "activeNow": "{{name}} approves for you until {{until}}.",
+    "planned": "{{name}} will approve for you from {{from}} to {{until}}."
+  },
+  "prefs": {
+    "title": "Notifications",
+    "kind": {
+      "approval": {
+        "requested": "Approval needed",
+        "reminder": "Reminders",
+        "approved": "My request approved",
+        "rejected": "My request not approved"
+      }
+    },
+    "digest": "One daily email of waiting approvals",
+    "digestHelp": "Instead of one email per request. Other channels are not affected.",
+    "push": {
+      "unsupported": "This browser cannot show push notifications.",
+      "off": "Push notifications are off on this device.",
+      "on": "Push notifications are on for this device.",
+      "denied": "Push notifications are blocked in the browser settings."
+    },
+    "enablePush": "Turn on",
+    "disablePush": "Turn off"
+  },
+  "workflow": {
+    "title": "Workflow",
+    "intro": "A workflow gives records of an entity a status (Draft, Pending approval…) and the buttons that move them along, with approvals where needed.",
+    "chooseEntity": "Choose an entity…",
+    "add": "Add workflow",
+    "states": "States",
+    "addState": "Add state",
+    "initialState": "New records start as",
+    "color": "Colour",
+    "locked": "Locked",
+    "editableWhenLocked": "Still editable",
+    "active": "Active",
+    "inactive": "Switched off",
+    "actions": "Buttons (actions)",
+    "addAction": "Add button",
+    "removeAction": "Remove this button",
+    "actionsCount": "{{count}} action(s)",
+    "levelsCount": "{{count}} approval step(s)",
+    "buttonLabel": "Button text",
+    "from": "Available when the record is",
+    "to": "Moves the record to",
+    "whoCan": "Only these roles (optional)",
+    "whoCanHelp": "Empty: anyone who can edit the record.",
+    "requesterOnly": "Only the person who created it",
+    "commentRequired": "Comment required",
+    "needsApproval": "Needs approval",
+    "actionCondition": "Only when (optional)",
+    "approvedState": "When approved, move to",
+    "rejectedState": "When rejected, move to",
+    "levels": "Approval steps (in order)",
+    "addLevel": "Add step",
+    "levelCondition": "This step applies only when (optional)",
+    "approvers": "Approvers",
+    "mode": "Decision",
+    "modeAny": "Any one of them",
+    "modeAll": "All of them",
+    "remindAfter": "Remind after (hours)",
+    "escalateAfter": "Escalate after (hours)",
+    "escalateTo": "Escalate to",
+    "escalateToHelp": "Nobody: the step is skipped and the next one starts.",
+    "status": "Status",
+    "anyStatus": "Any status",
+    "lockedNote": "Locked while in this status",
+    "waitingFor": "Waiting for:",
+    "history": "History ({{count}})",
+    "did": {
+      "submit": "submitted",
+      "approve": "approved",
+      "reject": "did not approve",
+      "escalate": "escalated (no action in time)",
+      "withdraw": "withdrew",
+      "cancel": "withdrew",
+      "reopen": "reopened"
+    }
+  },
+  "rules": {
+    "intro": "Rules run on every save, in forms and on the server: block a save, set a value, or make a field required, hidden or read-only.",
+    "new": "New rule",
+    "entity": "Entity",
+    "when": "When",
+    "then": "Then",
+    "field": "Field",
+    "condition": "Only when (optional)",
+    "conditionHelp": "A formula, e.g. amount > 100000 && !HAS_ROLE(\"Finance\")",
+    "value": "New value",
+    "valueHelp": "A formula; text needs quotes, e.g. \"Approved\".",
+    "message": "Message shown to the user",
+    "always": "Always",
+    "on": {
+      "save": "Any save",
+      "create": "Creating",
+      "update": "Changing"
+    },
+    "effect": {
+      "block": "Block the save",
+      "set": "Set a value",
+      "require": "Make required",
+      "hide": "Hide the field",
+      "readonly": "Make read-only"
+    }
+  },
+  "automation": {
+    "intro": "Automations react to changes (or run on a schedule) and do things for you: send messages, update or create records, call other systems.",
+    "new": "New automation",
+    "when": "When",
+    "onlyIf": "Only if (optional)",
+    "then": "Do",
+    "addAction": "Add step",
+    "template": "Message",
+    "channels": "Send by",
+    "recipients": "To",
+    "addPerson": "Add",
+    "addValue": "Add value",
+    "userIds": "User ids, separated by commas",
+    "anyState": "Any status",
+    "everyDay": "Every day at",
+    "everyHour": "Every hour",
+    "every15": "Every 15 minutes",
+    "sameUnit": "In the same organization unit",
+    "noUnit": "Company-wide",
+    "webhookHelp": "We send the record as JSON by POST, signed with the secret below (header X-Erp-Signature).",
+    "conditionPlaceholder": "e.g. amount > 50000",
+    "runs": "Recent runs",
+    "allRuns": "All runs",
+    "noRuns": "Nothing has run yet.",
+    "retry": "Run again",
+    "webhookSecret": "Webhook signing secret:",
+    "show": "Show",
+    "hide": "Hide",
+    "trigger": {
+      "created": "A record is created",
+      "updated": "A record is changed",
+      "deleted": "A record is deleted",
+      "field_changed": "A field changes",
+      "status_changed": "The status changes to",
+      "schedule": "On a schedule"
+    },
+    "action": {
+      "notify": "Send a message",
+      "update": "Update this record",
+      "create": "Create a record",
+      "webhook": "Call a webhook",
+      "workflow_action": "Press a workflow button"
+    },
+    "channel": {
+      "inapp": "In app",
+      "email": "Email",
+      "whatsapp": "WhatsApp",
+      "push": "Push"
+    },
+    "status": {
+      "running": "Running",
+      "ok": "Done",
+      "failed": "Failed",
+      "skipped": "Skipped"
+    },
+    "who": {
+      "creator": "Who created it",
+      "manager": "Their manager",
+      "unit_head": "Unit head",
+      "role": "Role",
+      "users": "Specific people",
+      "field": "Person in a field"
+    }
+  },
+  "templates": {
+    "intro": "The text of messages in each language. Built-in approval messages can be customized.",
+    "new": "New message",
+    "title": "Title (subject)",
+    "body": "Text",
+    "builtin": "built-in",
+    "customize": "Customize",
+    "keyHint": "e.g. po.approved (a-z, 0-9, _ and .)",
+    "placeholders": "Placeholders: {{record.title}}, {{record.<field>}}, {{record.number}}, {{entity}}, {{actor.name}}, {{comment}}, {{link}}",
+    "whatsapp": "Also send on WhatsApp",
+    "whatsappHelp": "WhatsApp needs a template approved by Meta. Enter its name and which values fill its parameters.",
+    "whatsappName": "Approved template name",
+    "whatsappParams": "Parameters, in order"
   }
 }

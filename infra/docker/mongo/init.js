@@ -11,6 +11,7 @@ const services = [
   'config',
   'records',
   'files',
+  'workflow',
 ];
 
 try {

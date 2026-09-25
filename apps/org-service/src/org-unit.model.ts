@@ -15,6 +15,8 @@ export interface OrgUnit {
   status: 'active' | 'inactive';
   /** Values of custom fields added in the config studio. */
   custom: Record<string, unknown>;
+  /** The unit's head, for "unit head" approvals. */
+  headUserId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -29,6 +31,7 @@ const schema = new Schema<OrgUnit>(
     depth: { type: Number, required: true },
     status: { type: String, enum: ['active', 'inactive'], default: 'active' },
     custom: { type: Schema.Types.Mixed, default: {} },
+    headUserId: String,
   },
   { collection: 'org_units', timestamps: true, versionKey: false, minimize: false },
 );
@@ -53,6 +56,7 @@ export function toOrgUnitDto(u: OrgUnit) {
     depth: u.depth,
     status: u.status,
     custom: u.custom ?? {},
+    headUserId: u.headUserId ?? null,
   };
 }
 export type OrgUnitDto = ReturnType<typeof toOrgUnitDto>;

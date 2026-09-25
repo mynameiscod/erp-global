@@ -16,6 +16,7 @@ import { AppModule as TenantModule } from '../../../apps/tenant-service/src/app.
 import { AppModule as ConfigModule } from '../../../apps/config-service/src/app.module';
 import { AppModule as RecordsModule } from '../../../apps/records-service/src/app.module';
 import { AppModule as FileModule } from '../../../apps/file-service/src/app.module';
+import { AppModule as WorkflowModule } from '../../../apps/workflow-service/src/app.module';
 
 const SERVICES = [
   'identity',
@@ -28,6 +29,7 @@ const SERVICES = [
   'config',
   'records',
   'file',
+  'workflow',
 ] as const;
 type ServiceName = (typeof SERVICES)[number];
 
@@ -42,6 +44,7 @@ const MODULES: Record<ServiceName, Type> = {
   config: ConfigModule,
   records: RecordsModule,
   file: FileModule,
+  workflow: WorkflowModule,
 };
 
 async function freePort(): Promise<number> {
@@ -60,6 +63,8 @@ export const PLATFORM_ADMIN = { email: 'root@platform.test', password: 'Platform
 
 export interface Stack {
   gatewayUrl: string;
+  /** Direct URL of a service, for its /internal API. */
+  serviceUrl(name: ServiceName): string;
   mongo: TestMongo;
   apps: Record<ServiceName, INestApplication>;
   stop(): Promise<void>;
@@ -85,6 +90,11 @@ export async function startStack(opts: { env?: Record<string, string> } = {}): P
     CONFIG_SERVICE_URL: url('config'),
     RECORDS_SERVICE_URL: url('records'),
     FILE_SERVICE_URL: url('file'),
+    WORKFLOW_SERVICE_URL: url('workflow'),
+    NOTIFICATION_SERVICE_URL: url('notification'),
+    // Tests run the scheduler by hand and send webhooks to a local receiver.
+    SCHEDULER_ENABLED: 'false',
+    WEBHOOK_ALLOW_PRIVATE: 'true',
     STORAGE_DRIVER: 'memory',
     JWT_PRIVATE_KEY: testKeys().privateKey,
     DATA_ENC_KEY: randomBytes(32).toString('base64'),
@@ -129,6 +139,8 @@ export async function startStack(opts: { env?: Record<string, string> } = {}): P
       CONFIG_SERVICE_URL: url('config'),
       RECORDS_SERVICE_URL: url('records'),
       FILE_SERVICE_URL: url('file'),
+      WORKFLOW_SERVICE_URL: url('workflow'),
+      NOTIFICATION_SERVICE_URL: url('notification'),
     }),
   );
   const server: Server = await new Promise((resolve) => {
@@ -137,6 +149,7 @@ export async function startStack(opts: { env?: Record<string, string> } = {}): P
 
   return {
     gatewayUrl: `http://127.0.0.1:${gatewayPort}`,
+    serviceUrl: url,
     mongo,
     apps,
     async stop() {

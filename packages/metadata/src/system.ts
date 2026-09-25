@@ -49,5 +49,9 @@ export function platformBaseLayer(): ConfigLayer {
     forms: [],
     listViews: [],
     numbering: [],
+    workflows: [],
+    rules: [],
+    automations: [],
+    templates: [],
   };
 }

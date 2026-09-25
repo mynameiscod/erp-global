@@ -65,6 +65,18 @@ export const EventTypes = {
   RecordCreated: 'records.record.created',
   RecordUpdated: 'records.record.updated',
   RecordDeleted: 'records.record.deleted',
+  RecordStatusChanged: 'records.record.status_changed',
+
+  WorkflowActionTaken: 'workflow.action.taken',
+  ApprovalTaskCreated: 'workflow.task.created',
+  ApprovalTaskDecided: 'workflow.task.decided',
+  ApprovalTaskReminded: 'workflow.task.reminded',
+  ApprovalTaskEscalated: 'workflow.task.escalated',
+  AutomationFailed: 'workflow.automation.failed',
+  WebhookCalled: 'workflow.webhook.called',
+
+  DelegationSet: 'identity.delegation.set',
+  DelegationCleared: 'identity.delegation.cleared',
 
   FileUploaded: 'files.file.uploaded',
 } as const;
@@ -84,6 +96,8 @@ export const NOTIFY_SUBJECT_PREFIX = 'notify.';
 export const NotifyTypes = {
   EmailRequested: 'notify.email.requested',
   WhatsappRequested: 'notify.whatsapp.requested',
+  /** A notification for users of the company, delivered on the channels they allow. */
+  UserNotify: 'notify.user.requested',
 } as const;
 
 export function subjectFor(type: string): string {
@@ -106,6 +120,41 @@ export interface WhatsappRequestedPayload {
   template: 'otp';
   locale: string;
   code: string;
+}
+
+export type NotifyChannel = 'inapp' | 'email' | 'whatsapp' | 'push';
+
+export interface UserNotifyPayload {
+  userIds: string[];
+  /** Message template key: a built-in (`approval.requested`…) or one from the company config. */
+  template: string;
+  channels: NotifyChannel[];
+  /** Values for `{{…}}` placeholders. */
+  vars: Record<string, unknown>;
+  /** Path in the web app the notification opens, e.g. `/r/purchase/<id>`. */
+  link?: string;
+  /** Where the template is looked up (org unit overrides). */
+  orgPath?: string;
+  /** Approval requests always stay in the in-app inbox, whatever the user's preferences. */
+  essential?: boolean;
+}
+
+/** Record events carry this so automations triggered by automations can be cut off. */
+export interface RecordEventPayload {
+  entity: string;
+  recordId: string;
+  number: string | null;
+  orgUnitId: string | null;
+  orgPath?: string;
+  changes?: Record<string, { from?: unknown; to?: unknown }>;
+  /** 0 for user changes; +1 for each automation in the chain that caused this one. */
+  depth?: number;
+}
+
+export interface RecordStatusChangedPayload extends RecordEventPayload {
+  from: string | null;
+  to: string;
+  action: string | null;
 }
 
 export interface OrgUnitMovedPayload {

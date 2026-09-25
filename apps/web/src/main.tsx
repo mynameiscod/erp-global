@@ -8,6 +8,9 @@ import './styles.css';
 import { App } from './App';
 import { ApiError } from './api/client';
 import { AuthProvider } from './auth/AuthContext';
+import { registerServiceWorker } from './workflow/push';
+
+registerServiceWorker();
 
 const queryClient = new QueryClient({
   defaultOptions: {

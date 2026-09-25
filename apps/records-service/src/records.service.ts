@@ -10,13 +10,23 @@ import {
 import { OutboxWriter } from '@erp/events';
 import {
   activeFields,
+  applyFieldRules,
+  checkRules,
   findEntity,
   isEmpty,
+  lockedFields,
+  rulesFor,
+  stateOf,
   SYSTEM_COLUMNS,
   validateRecord,
+  workflowFor,
+  pickText,
   type EntityDef,
+  type FieldEffects,
   type RecordData,
   type RecordIssue,
+  type RuleDef,
+  type RuleEnv,
 } from '@erp/metadata';
 import {
   AppError,
@@ -36,6 +46,7 @@ const ID_RE = /^[a-f0-9]{24}$/;
 const COMPANY_PATH = '/';
 
 export interface ListQuery {
+  status?: string;
   page: number;
   pageSize: number;
   sort?: string;
@@ -50,6 +61,22 @@ export interface WriteBody {
   orgUnitId?: string | null;
   data: Record<string, unknown>;
 }
+
+/**
+ * Writes by automations (through /internal): no user permission check, and rules and
+ * workflow locks do not apply; they are the company's own configured behaviour.
+ */
+export interface SystemWrite {
+  depth: number;
+  /** Idempotency key for created records. */
+  sourceKey?: string;
+}
+
+const noEffects = (): FieldEffects => ({
+  hidden: new Set(),
+  readonly: new Set(),
+  required: new Set(),
+});
 
 function invalid(issues: RecordIssue[]): AppError {
   return AppError.badRequest(
@@ -126,11 +153,42 @@ export class RecordsService {
     return doc;
   }
 
+  /** What rules need to know about the user and the record's place in the org tree. */
+  private async ruleEnv(
+    rules: RuleDef[],
+    extra: { old?: RecordData; status: string | null; orgUnitId: string | null },
+  ): Promise<RuleEnv> {
+    const text = rules.map((r) => `${r.condition ?? ''} ${r.value ?? ''}`).join(' ');
+    const actor = requireContext().actor!;
+    let roles: string[] = [];
+    if (/HAS_ROLE/i.test(text) && actor.type === 'user') {
+      const list = await this.clients.access.get<{ name: string; key: string | null }[]>(
+        `/internal/access/users/${actor.id}/roles`,
+      );
+      roles = list.flatMap((r) => [r.name, r.key ?? '']).filter(Boolean);
+    }
+    let unitCodes: string[] = [];
+    if (/IN_UNIT/i.test(text) && extra.orgUnitId) {
+      const units = await this.clients.org.get<{ code: string | null }[]>(
+        `/internal/org/units/${extra.orgUnitId}/ancestors`,
+      );
+      unitCodes = units.map((u) => u.code ?? '').filter(Boolean);
+    }
+    return {
+      old: extra.old,
+      user: { id: actor.id, roles },
+      unitCodes,
+      status: extra.status,
+      now: new Date(),
+    };
+  }
+
   private toDto(doc: RecordDoc, entity?: EntityDef) {
     return {
       id: String(doc._id),
       entity: doc.entity,
       number: doc.number ?? null,
+      status: doc.status ?? null,
       data: fromStorage(entity, doc.data),
       orgUnitId: doc.orgUnitId,
       configVersion: doc.configVersion,
@@ -264,6 +322,7 @@ export class RecordsService {
     }
 
     if (q.ids?.length) filter._id = { $in: q.ids };
+    if (q.status) filter.status = q.status;
     const fields = new Map(entity.fields.map((f) => [f.key, f]));
     for (const [k, v] of Object.entries(q.filter ?? {})) {
       if (!fields.has(k)) throw AppError.badRequest(`Unknown filter field "${k}"`);
@@ -335,7 +394,7 @@ export class RecordsService {
 
   // ---- commands ----
 
-  async create(key: string, body: WriteBody) {
+  async create(key: string, body: WriteBody, system?: SystemWrite) {
     const { entity: companyEntity } = await this.entity(key);
     const orgScoped = companyEntity.orgScoped !== false;
     if (orgScoped && !body.orgUnitId)
@@ -343,12 +402,30 @@ export class RecordsService {
     const unit = orgScoped ? await this.unit(body.orgUnitId!) : undefined;
     const orgPath = unit?.path ?? COMPANY_PATH;
     const { entity, cfg } = await this.entity(key, unit?.path);
-    this.assertAllowed(entity, 'create', orgPath);
+    if (!system) this.assertAllowed(entity, 'create', orgPath);
+    if (system?.sourceKey) {
+      const existing = await (
+        await this.records()
+      )
+        .findOne({ sourceKey: system.sourceKey })
+        .lean<RecordDoc>();
+      if (existing) return this.toDto(existing, entity);
+    }
 
-    const { data, issues } = validateRecord(entity, body.data, {
+    const status = workflowFor(cfg, key)?.initialState ?? null;
+    const rules = system ? [] : rulesFor(cfg, key, 'create');
+    let input = body.data;
+    let effects = noEffects();
+    let env: RuleEnv = {};
+    if (rules.length) {
+      env = await this.ruleEnv(rules, { status, orgUnitId: unit?.id ?? null });
+      ({ data: input, effects } = applyFieldRules(entity, rules, input, env));
+    }
+    const { data, issues } = validateRecord(entity, input, {
       cfg,
       companyCurrency: cfg.tenant.currency,
     });
+    if (rules.length) issues.push(...checkRules(rules, data, effects, env, requireContext().lang));
     if (issues.length) throw invalid(issues);
     const refIssues = await this.checkReferences(entity, data, Object.keys(data));
     if (refIssues.length) throw invalid(refIssues);
@@ -381,6 +458,8 @@ export class RecordsService {
             orgUnitId: unit?.id ?? null,
             orgPath,
             configVersion: cfg.version,
+            status,
+            sourceKey: system?.sourceKey,
             createdBy: actor,
             updatedBy: actor,
           },
@@ -395,39 +474,64 @@ export class RecordsService {
           recordId: String(id),
           number: number ?? null,
           orgUnitId: unit?.id ?? null,
+          orgPath,
+          status,
+          depth: system?.depth ?? 0,
           changes: this.changes({}, data),
         },
         { session },
       );
     });
-    return this.get(key, String(id));
+    return system
+      ? this.toDto(await this.load(key, String(id)), entity)
+      : this.get(key, String(id));
   }
 
-  async update(key: string, id: string, body: WriteBody) {
+  async update(key: string, id: string, body: WriteBody, system?: SystemWrite) {
     const doc = await this.load(key, id);
-    const { entity: current } = await this.entity(
+    const { entity: current, cfg: currentCfg } = await this.entity(
       key,
       doc.orgPath === COMPANY_PATH ? undefined : doc.orgPath,
     );
-    this.assertAllowed(current, 'update', doc.orgPath);
+    if (!system) this.assertAllowed(current, 'update', doc.orgPath);
+    const status = doc.status ?? null;
+    const workflow = workflowFor(currentCfg, key);
+    const locked = system ? new Set<string>() : lockedFields(workflow, status, current);
 
     let unit: OrgUnitInfo | undefined;
     let orgPath = doc.orgPath;
     if (body.orgUnitId && body.orgUnitId !== doc.orgUnitId && current.orgScoped !== false) {
+      if (locked.size) throw this.lockedError(workflow, status);
       unit = await this.unit(body.orgUnitId);
       orgPath = unit.path;
-      this.assertAllowed(current, 'create', orgPath);
+      if (!system) this.assertAllowed(current, 'create', orgPath);
     }
     const { entity, cfg } = await this.entity(key, orgPath === COMPANY_PATH ? undefined : orgPath);
     const before = fromStorage(entity, doc.data);
+
+    const rules = system ? [] : rulesFor(cfg, key, 'update');
+    let input = body.data;
+    let effects = noEffects();
+    let env: RuleEnv = {};
+    if (rules.length) {
+      env = await this.ruleEnv(rules, {
+        old: before,
+        status,
+        orgUnitId: unit?.id ?? doc.orgUnitId,
+      });
+      ({ data: input, effects } = applyFieldRules(entity, rules, { ...before, ...body.data }, env));
+    }
     const { data, issues } = validateRecord(
       entity,
-      body.data,
+      input,
       { cfg, companyCurrency: cfg.tenant.currency },
       before,
     );
+    if (rules.length) issues.push(...checkRules(rules, data, effects, env, requireContext().lang));
     if (issues.length) throw invalid(issues);
     const changed = this.changes(before, data);
+    const lockedChanges = Object.keys(changed).filter((k) => locked.has(k));
+    if (lockedChanges.length) throw this.lockedError(workflow, status, lockedChanges);
     const refIssues = await this.checkReferences(entity, data, Object.keys(changed));
     if (refIssues.length) throw invalid(refIssues);
     if (!Object.keys(changed).length && !unit) return this.toDto(doc, entity);
@@ -458,12 +562,30 @@ export class RecordsService {
           recordId: id,
           number: doc.number ?? null,
           orgUnitId: unit?.id ?? doc.orgUnitId,
+          orgPath,
+          status,
+          depth: system?.depth ?? 0,
           changes: changed,
         },
         { session },
       );
     });
-    return this.get(key, id);
+    return system ? this.toDto(await this.load(key, id), entity) : this.get(key, id);
+  }
+
+  private lockedError(
+    workflow: ReturnType<typeof workflowFor>,
+    status: string | null,
+    fields: string[] = [],
+  ): AppError {
+    const state = workflow ? stateOf(workflow, status) : undefined;
+    const name = state ? pickText(state.label, requireContext().lang ?? 'en') : status;
+    return new AppError(
+      409,
+      'RECORD_LOCKED',
+      `This record cannot be changed while it is "${name}"`,
+      fields.map((f) => ({ path: f, message: 'Locked' })),
+    );
   }
 
   async remove(key: string, id: string) {
@@ -473,6 +595,11 @@ export class RecordsService {
       doc.orgPath === COMPANY_PATH ? undefined : doc.orgPath,
     );
     this.assertAllowed(entity, 'delete', doc.orgPath);
+    const { cfg } = await this.entity(key, doc.orgPath === COMPANY_PATH ? undefined : doc.orgPath);
+    const workflow = workflowFor(cfg, key);
+    if (lockedFields(workflow, doc.status, entity).size) {
+      throw this.lockedError(workflow, doc.status ?? null);
+    }
     const [Records, Uniques] = await Promise.all([this.records(), this.uniques()]);
     await this.conn.transaction(async (session) => {
       await Records.updateOne(
@@ -483,11 +610,92 @@ export class RecordsService {
       await Uniques.deleteMany({ recordId: id }, { session });
       await this.outbox.record(
         EventTypes.RecordDeleted,
-        { entity: key, recordId: id, number: doc.number ?? null, orgUnitId: doc.orgUnitId },
+        {
+          entity: key,
+          recordId: id,
+          number: doc.number ?? null,
+          orgUnitId: doc.orgUnitId,
+          orgPath: doc.orgPath,
+          status: doc.status ?? null,
+          depth: 0,
+        },
         { session },
       );
     });
     return { deleted: true };
+  }
+
+  // ---- internal (workflow-service) ----
+
+  /** Full record for the workflow engine, including deleted ones when asked. */
+  async internalGet(key: string, id: string, includeDeleted = false) {
+    if (!ID_RE.test(id)) throw AppError.notFound('Record');
+    const doc = await (
+      await this.records()
+    )
+      .findOne({ _id: id, entity: key, ...(includeDeleted ? {} : { deletedAt: null }) })
+      .lean<RecordDoc>();
+    if (!doc) throw AppError.notFound('Record');
+    const { entity } = await this.entity(
+      key,
+      doc.orgPath === COMPANY_PATH ? undefined : doc.orgPath,
+    ).catch(() => ({ entity: undefined }));
+    return { ...this.toDto(doc, entity), orgPath: doc.orgPath, deleted: !!doc.deletedAt };
+  }
+
+  /** Every record of an entity, page by page, for scheduled automations. */
+  async internalList(key: string, page: number, pageSize: number) {
+    const Records = await this.records();
+    const docs = await Records.find({ entity: key, deletedAt: null })
+      .sort({ _id: 1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .lean<RecordDoc[]>();
+    const { entity } = await this.entity(key);
+    return docs.map((d) => ({ ...this.toDto(d, entity), orgPath: d.orgPath }));
+  }
+
+  /**
+   * Moves the workflow state if it is still `from` (so two approvers acting at once cannot
+   * both move it) and publishes `records.record.status_changed`.
+   */
+  async setStatus(
+    key: string,
+    id: string,
+    body: { from: string | null; to: string; action: string | null; depth: number },
+  ) {
+    const doc = await this.load(key, id);
+    if ((doc.status ?? null) !== body.from) {
+      throw new AppError(409, 'STATUS_CHANGED', 'The record was changed by someone else');
+    }
+    const Records = await this.records();
+    const actor = requireContext().actor!.id;
+    await this.conn.transaction(async (session) => {
+      const res = await Records.updateOne(
+        { _id: doc._id, status: body.from },
+        { $set: { status: body.to, updatedBy: actor } },
+        { session },
+      );
+      if (res.modifiedCount !== 1) {
+        throw new AppError(409, 'STATUS_CHANGED', 'The record was changed by someone else');
+      }
+      await this.outbox.record(
+        EventTypes.RecordStatusChanged,
+        {
+          entity: key,
+          recordId: id,
+          number: doc.number ?? null,
+          orgUnitId: doc.orgUnitId,
+          orgPath: doc.orgPath,
+          from: body.from,
+          to: body.to,
+          action: body.action,
+          depth: body.depth,
+        },
+        { session },
+      );
+    });
+    return this.internalGet(key, id);
   }
 
   /** Keeps record paths in step with org moves. */

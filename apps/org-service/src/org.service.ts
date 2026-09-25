@@ -144,11 +144,30 @@ export class OrgService {
 
   async update(
     id: string,
-    patch: { name?: string; code?: string; type?: string; custom?: Record<string, unknown> },
+    patch: {
+      name?: string;
+      code?: string;
+      type?: string;
+      custom?: Record<string, unknown>;
+      headUserId?: string | null;
+    },
   ) {
     const unit = await this.load(id);
     this.assertScope('org.unit.update', unit.path);
-    const set = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
+    const { headUserId, ...rest } = patch;
+    const set: Record<string, unknown> = Object.fromEntries(
+      Object.entries(rest).filter(([, v]) => v !== undefined),
+    );
+    const unset: Record<string, ''> = {};
+    if (headUserId === null && unit.headUserId) unset.headUserId = '';
+    if (headUserId && headUserId !== unit.headUserId) {
+      const head = await this.clients.identity
+        .get<{ status: string }>(`/internal/users/${headUserId}`)
+        .catch(() => null);
+      if (!head || head.status === 'deactivated')
+        throw AppError.badRequest('Choose an active user as head');
+      set.headUserId = headUserId;
+    }
     if (set.custom !== undefined) {
       set.custom = await validateCustomFields(
         this.clients.config,
@@ -158,21 +177,26 @@ export class OrgService {
         unit.path,
       );
     }
-    if (!Object.keys(set).length) return toOrgUnitDto(unit);
+    if (!Object.keys(set).length && !Object.keys(unset).length) return toOrgUnitDto(unit);
     const Units = await this.units();
     await this.conn.transaction(async (session) => {
-      await Units.updateOne({ _id: unit._id }, { $set: set }, { session }).catch(
-        (e: { code?: number }) => {
-          if (e.code === 11000) throw AppError.conflict('Code already used by another unit');
-          throw e;
-        },
-      );
+      await Units.updateOne(
+        { _id: unit._id },
+        { $set: set, ...(Object.keys(unset).length ? { $unset: unset } : {}) },
+        { session },
+      ).catch((e: { code?: number }) => {
+        if (e.code === 11000) throw AppError.conflict('Code already used by another unit');
+        throw e;
+      });
       await this.outbox.record(
         EventTypes.OrgUnitUpdated,
         {
           unitId: id,
           changes: Object.fromEntries(
-            Object.entries(set).map(([k, v]) => [
+            Object.entries({
+              ...set,
+              ...(unset.headUserId === '' ? { headUserId: null } : {}),
+            }).map(([k, v]) => [
               k,
               { from: (unit as unknown as Record<string, unknown>)[k] ?? null, to: v },
             ]),
@@ -280,6 +304,24 @@ export class OrgService {
     return { deleted: deletedCount };
   }
 
+  /** The unit and every unit above it, from the top of the tree down. */
+  async internalAncestors(id: string) {
+    const unit = await this.load(id);
+    const ids = unit.path.split('/').filter(Boolean);
+    const units = await (await this.units()).find({ _id: { $in: ids } }).lean();
+    const byId = new Map(units.map((u) => [String(u._id), u]));
+    return ids
+      .map((i) => byId.get(i))
+      .filter((u): u is NonNullable<typeof u> => !!u)
+      .map((u) => ({
+        id: String(u._id),
+        name: u.name,
+        code: u.code ?? null,
+        path: u.path,
+        headUserId: u.headUserId ?? null,
+      }));
+  }
+
   async internalGet(id: string) {
     const u = await this.load(id);
     return {
@@ -288,6 +330,7 @@ export class OrgService {
       code: u.code ?? null,
       path: u.path,
       status: u.status,
+      headUserId: u.headUserId ?? null,
     };
   }
 }

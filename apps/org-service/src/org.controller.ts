@@ -87,6 +87,11 @@ export class InternalOrgController {
     return this.org.undoBootstrap();
   }
 
+  @Get('units/:id/ancestors')
+  ancestors(@Param('id') id: string) {
+    return this.org.internalAncestors(id);
+  }
+
   @Get('units/:id')
   get(@Param('id') id: string) {
     return this.org.internalGet(id);

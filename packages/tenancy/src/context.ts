@@ -14,6 +14,8 @@ export interface RequestContext {
   sessionId?: string;
   acl?: AclEntry[];
   plat?: PermissionKey[];
+  /** The caller's language from Accept-Language, for translated messages. */
+  lang?: string;
   /**
    * Allows tenant-plugged models to run without a tenant. Only for platform
    * maintenance code that is explicitly written to span tenants.

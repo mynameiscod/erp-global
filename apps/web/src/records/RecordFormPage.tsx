@@ -4,7 +4,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { recordPermission } from '@erp/contracts';
-import { findEntity, validateRecord } from '@erp/metadata';
+import {
+  applyFieldRules,
+  findEntity,
+  lockedFields,
+  rulesFor,
+  validateRecord,
+  workflowFor,
+} from '@erp/metadata';
 import { api, ApiError } from '../api/client';
 import type { OrgUnitDto } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
@@ -12,6 +19,16 @@ import { useEffectiveConfig, useLabel } from '../config/hooks';
 import { ErrorAlert, Loading, PageHeader } from '../components/ui';
 import { DynamicFields, editableValues, type Values } from './DynamicFields';
 import type { RecordDto } from './RecordsListPage';
+import { WorkflowPanel } from './WorkflowPanel';
+
+/** The signed-in user's role names and keys, for HAS_ROLE() in form rules. */
+function useMyRoles() {
+  return useQuery({
+    queryKey: ['me', 'roles'],
+    queryFn: () => api<{ name: string; key: string | null }[]>('/access/me/roles'),
+    staleTime: 60_000,
+  });
+}
 
 /** Create or edit one record. The form follows the configuration that applies at the record's org unit. */
 export function RecordFormPage() {
@@ -19,7 +36,8 @@ export function RecordFormPage() {
   const isNew = !id || id === 'new';
   const { t } = useTranslation();
   const label = useLabel();
-  const { can } = useAuth();
+  const { can, user } = useAuth();
+  const myRoles = useMyRoles();
   const navigate = useNavigate();
   const qc = useQueryClient();
 
@@ -66,6 +84,57 @@ export function RecordFormPage() {
   const cfg = useEffectiveConfig(orgScoped && orgUnitId ? orgUnitId : undefined);
   const entity = cfg.data ? findEntity(cfg.data, key) : undefined;
 
+  // Business rules and workflow locks, evaluated live as the user types. The server applies
+  // the same rules on save, so this is for guidance only.
+  const workflow = cfg.data ? workflowFor(cfg.data, key) : undefined;
+  const status = isNew ? (workflow?.initialState ?? null) : (record.data?.status ?? null);
+  const formState = useMemo(() => {
+    if (!entity || !cfg.data) return undefined;
+    const rules = rulesFor(cfg.data, key, isNew ? 'create' : 'update');
+    const path = units.data?.find((u) => u.id === orgUnitId)?.path ?? '';
+    const codes = path
+      .split('/')
+      .filter(Boolean)
+      .map((uid) => units.data?.find((u) => u.id === uid)?.code ?? '')
+      .filter(Boolean);
+    const env = {
+      old: isNew ? undefined : record.data?.data,
+      user: {
+        id: user?.id ?? '',
+        roles: (myRoles.data ?? []).flatMap((r) => [r.name, r.key ?? '']).filter(Boolean),
+      },
+      unitCodes: codes,
+      status,
+    };
+    const { data, effects } = applyFieldRules(entity, rules, values, env);
+    const setByRule = new Set(
+      rules
+        .filter((r) => r.effect === 'set' && r.field && data[r.field] !== values[r.field])
+        .map((r) => r.field!),
+    );
+    const locked = isNew ? new Set<string>() : lockedFields(workflow, status, entity);
+    return {
+      shown: { ...values, ...Object.fromEntries([...setByRule].map((k) => [k, data[k]])) },
+      hidden: effects.hidden,
+      required: effects.required,
+      readOnly: new Set([...effects.readonly, ...setByRule, ...locked]),
+      locked: locked.size > 0,
+    };
+  }, [
+    entity,
+    cfg.data,
+    key,
+    isNew,
+    units.data,
+    orgUnitId,
+    record.data,
+    user,
+    myRoles.data,
+    status,
+    values,
+    workflow,
+  ]);
+
   if (cfg.isLoading || (!isNew && record.isLoading)) return <Loading />;
   if (!entity || !cfg.data)
     return (
@@ -79,7 +148,9 @@ export function RecordFormPage() {
     orgScoped ? unitPath : undefined,
   );
   const canDelete =
-    !isNew && can(recordPermission(key, 'delete'), orgScoped ? unitPath : undefined);
+    !isNew &&
+    !formState?.locked &&
+    can(recordPermission(key, 'delete'), orgScoped ? unitPath : undefined);
 
   const save = async () => {
     setError(null);
@@ -152,6 +223,8 @@ export function RecordFormPage() {
       />
       {saved && <Alert variant="success">{t('records.saved')}</Alert>}
       <ErrorAlert error={error} onClose={() => setError(null)} />
+      {errors._record && <Alert variant="danger">{errors._record}</Alert>}
+      {!isNew && id && <WorkflowPanel entity={key} id={id} />}
       <Card className="shadow-sm border-0">
         <Card.Body>
           <Form
@@ -168,6 +241,7 @@ export function RecordFormPage() {
                 </Form.Label>
                 <Form.Select
                   value={orgUnitId}
+                  disabled={formState?.locked}
                   isInvalid={!!errors.orgUnitId}
                   onChange={(e) => setOrgUnitId(e.target.value)}
                 >
@@ -186,8 +260,11 @@ export function RecordFormPage() {
                 entity={entity}
                 cfg={effective}
                 currency={effective.tenant.currency}
-                values={values}
+                values={formState?.shown ?? values}
                 errors={errors}
+                hidden={formState?.hidden}
+                readOnly={formState?.readOnly}
+                required={formState?.required}
                 onChange={(k, v) => setValues((prev) => ({ ...prev, [k]: v }))}
               />
             </fieldset>

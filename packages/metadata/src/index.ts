@@ -1,4 +1,7 @@
 export * from './types';
+export * from './automation-types';
+export * from './rules';
+export * from './builtin-templates';
 export * from './i18n';
 export * from './fiscal';
 export * from './formula';

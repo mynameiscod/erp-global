@@ -11,6 +11,7 @@ export interface UserDto {
   mfaMethod?: MfaMethod | null;
   phone?: string | null;
   hasPassword?: boolean;
+  managerId?: string | null;
   custom?: Record<string, unknown>;
   lastLoginAt: string | null;
   createdAt: string;
@@ -93,6 +94,7 @@ export interface OrgUnitDto {
   depth: number;
   status: 'active' | 'inactive';
   custom?: Record<string, unknown>;
+  headUserId?: string | null;
 }
 
 export interface RoleDto {
@@ -146,4 +148,72 @@ export interface MeDto extends UserDto {
   tenantId: string;
   acl: AclEntry[];
   platformPermissions: PermissionKey[];
+}
+
+export interface WorkflowHistoryEntry {
+  at: string;
+  by: string;
+  byName: string;
+  onBehalfOf?: string;
+  onBehalfOfName: string | null;
+  action: string;
+  from: string | null;
+  to: string | null;
+  comment?: string;
+  level?: string;
+}
+
+export type WorkflowView =
+  | { workflow: false }
+  | {
+      workflow: true;
+      state: string;
+      stateLabel: Record<string, string>;
+      color: string | null;
+      locked: boolean;
+      states: { key: string; label: Record<string, string>; color: string | null }[];
+      actions: { key: string; label: Record<string, string>; commentRequired: boolean }[];
+      myTaskIds: string[];
+      pending: {
+        id: string;
+        level: string;
+        levelLabel: Record<string, string>;
+        assigneeId: string;
+        assigneeName: string;
+      }[];
+      history: WorkflowHistoryEntry[];
+    };
+
+export interface ApprovalTaskDto {
+  id: string;
+  entity: string;
+  recordId: string;
+  recordTitle: string;
+  level: string;
+  levelLabel: Record<string, string>;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'escalated';
+  requesterName: string;
+  onBehalfOf: string | null;
+  remindAt: string | null;
+  escalateAt: string | null;
+  decidedAt: string | null;
+  comment: string | null;
+  createdAt: string;
+}
+
+export interface NotificationDto {
+  id: string;
+  template: string;
+  title: string;
+  body: string;
+  link: string | null;
+  read: boolean;
+  createdAt: string;
+}
+
+export interface Page<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
 }

@@ -6,6 +6,7 @@ export const recordsEnvSchema = baseEnvSchema.extend({
   ORG_SERVICE_URL: z.string().url(),
   IDENTITY_SERVICE_URL: z.string().url(),
   FILE_SERVICE_URL: z.string().url(),
+  ACCESS_SERVICE_URL: z.string().url(),
 });
 
 export const CLIENTS = Symbol('CLIENTS');
@@ -24,6 +25,7 @@ export interface Clients {
   org: Pick<ServiceClient, 'get'>;
   identity: Pick<ServiceClient, 'get'>;
   files: Pick<ServiceClient, 'get'>;
+  access: Pick<ServiceClient, 'get'>;
 }
 
 export function createClients(): Clients {
@@ -37,5 +39,6 @@ export function createClients(): Clients {
     org: make('org-service', env.ORG_SERVICE_URL),
     identity: make('identity-service', env.IDENTITY_SERVICE_URL),
     files: make('file-service', env.FILE_SERVICE_URL),
+    access: make('access-service', env.ACCESS_SERVICE_URL),
   };
 }

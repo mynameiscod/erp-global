@@ -7,6 +7,9 @@ export interface TenantProfile {
   currency: string;
   locale: string;
   defaultLanguage: string;
+  /** IANA time zone, e.g. Asia/Kolkata. Missing from caches filled before Step 4. */
+  timezone?: string;
+  name?: string;
 }
 
 export type EffectiveConfigResponse = EffectiveConfig & { tenant: TenantProfile };

@@ -24,6 +24,8 @@ export const gatewayEnvSchema = z.object({
   CONFIG_SERVICE_URL: url,
   RECORDS_SERVICE_URL: url,
   FILE_SERVICE_URL: url,
+  WORKFLOW_SERVICE_URL: url,
+  NOTIFICATION_SERVICE_URL: url,
 });
 
 export type GatewayEnv = z.infer<typeof gatewayEnvSchema>;
@@ -33,6 +35,8 @@ export interface Route {
   prefixes: string[];
   service: string;
   target: string;
+  /** Long-lived responses (server-sent events): no proxy timeout. */
+  stream?: boolean;
 }
 
 export function routes(env: GatewayEnv): Route[] {
@@ -58,6 +62,23 @@ export function routes(env: GatewayEnv): Route[] {
     { prefixes: ['/api/v1/config'], service: 'config-service', target: env.CONFIG_SERVICE_URL },
     { prefixes: ['/api/v1/records'], service: 'records-service', target: env.RECORDS_SERVICE_URL },
     { prefixes: ['/api/v1/files'], service: 'file-service', target: env.FILE_SERVICE_URL },
+    {
+      prefixes: ['/api/v1/workflow'],
+      service: 'workflow-service',
+      target: env.WORKFLOW_SERVICE_URL,
+    },
+    // Listed before the general notifications route so the stream is matched first.
+    {
+      prefixes: ['/api/v1/notifications/stream'],
+      service: 'notification-service',
+      target: env.NOTIFICATION_SERVICE_URL,
+      stream: true,
+    },
+    {
+      prefixes: ['/api/v1/notifications'],
+      service: 'notification-service',
+      target: env.NOTIFICATION_SERVICE_URL,
+    },
   ];
 }
 

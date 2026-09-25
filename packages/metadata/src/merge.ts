@@ -1,3 +1,4 @@
+import { normalizeLayer } from './types';
 import type {
   ConfigLayer,
   ConfigSettings,
@@ -31,13 +32,23 @@ export function mergeLayers(layers: ConfigLayer[]): ConfigLayer {
   const forms = new Map<string, ConfigLayer['forms'][number]>();
   const listViews = new Map<string, ConfigLayer['listViews'][number]>();
   const numbering = new Map<string, ConfigLayer['numbering'][number]>();
+  const workflows = new Map<string, ConfigLayer['workflows'][number]>();
+  const rules = new Map<string, ConfigLayer['rules'][number]>();
+  const automations = new Map<string, ConfigLayer['automations'][number]>();
+  const templates = new Map<string, ConfigLayer['templates'][number]>();
   let settings: ConfigSettings = {};
-  for (const layer of layers) {
+  for (const raw of layers) {
+    const layer = normalizeLayer(raw);
     for (const e of layer.entities) entities.set(e.key, mergeEntity(entities.get(e.key), e));
     for (const p of layer.picklists) picklists.set(p.key, p);
     for (const f of layer.forms) forms.set(f.entity, f);
     for (const l of layer.listViews) listViews.set(l.entity, l);
     for (const n of layer.numbering) numbering.set(n.key, n);
+    // A branch override replaces the whole workflow of an entity (e.g. its own approval chain).
+    for (const w of layer.workflows) workflows.set(w.entity, w);
+    for (const r of layer.rules) rules.set(r.key, r);
+    for (const a of layer.automations) automations.set(a.key, a);
+    for (const t of layer.templates) templates.set(t.key, t);
     settings = { ...settings, ...(layer.settings ?? {}) };
   }
   return {
@@ -46,6 +57,10 @@ export function mergeLayers(layers: ConfigLayer[]): ConfigLayer {
     forms: [...forms.values()],
     listViews: [...listViews.values()],
     numbering: [...numbering.values()],
+    workflows: [...workflows.values()],
+    rules: [...rules.values()],
+    automations: [...automations.values()],
+    templates: [...templates.values()],
     settings,
   };
 }

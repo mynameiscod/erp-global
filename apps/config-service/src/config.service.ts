@@ -9,8 +9,13 @@ import {
   entityPatchSchema,
   fiscalYearStartFor,
   formLayoutSchema,
+  automationSchema,
   listViewSchema,
+  messageTemplateSchema,
+  normalizeTenantConfig,
   numberingPeriod,
+  ruleSchema,
+  workflowSchema,
   numberingSchema,
   pathIds,
   picklistSchema,
@@ -46,6 +51,10 @@ export const KINDS = {
   forms: { list: 'forms', key: 'entity', schema: formLayoutSchema },
   'list-views': { list: 'listViews', key: 'entity', schema: listViewSchema },
   numbering: { list: 'numbering', key: 'key', schema: numberingSchema },
+  workflows: { list: 'workflows', key: 'entity', schema: workflowSchema },
+  rules: { list: 'rules', key: 'key', schema: ruleSchema },
+  automations: { list: 'automations', key: 'key', schema: automationSchema },
+  templates: { list: 'templates', key: 'key', schema: messageTemplateSchema },
 } as const satisfies Record<string, { list: keyof ConfigLayer; key: string; schema: ZodType }>;
 export type Kind = keyof typeof KINDS;
 
@@ -203,6 +212,8 @@ export class ConfigService {
         currency: profile.currency,
         locale: profile.locale,
         defaultLanguage: profile.defaultLanguage,
+        timezone: profile.timezone ?? 'UTC',
+        name: profile.name,
       },
     };
   }
@@ -210,7 +221,12 @@ export class ConfigService {
   async effectiveForUnit(orgUnitId: string | undefined, source: 'published' | 'draft') {
     if (source === 'draft') this.assertCompanyOrAny('config.read');
     const path = orgUnitId ? (await this.orgUnit(orgUnitId)).path : undefined;
-    return this.effective(path, source);
+    const cfg = await this.effective(path, source);
+    // Automations (webhook addresses) are for the studio and the services, not every user.
+    if (source === 'published' && !hasPermission(this.claims(), 'config.read')) {
+      return { ...cfg, automations: [] };
+    }
+    return cfg;
   }
 
   private assertCompanyOrAny(perm: Permission): void {
@@ -262,7 +278,7 @@ export class ConfigService {
     const latest = await this.latest();
     const changes = diffConfigs(latest?.config ?? emptyTenantConfig(), draft.config);
     return {
-      config: draft.config,
+      config: normalizeTenantConfig(draft.config),
       baseVersion: draft.baseVersion,
       publishedVersion: latest?.version ?? 0,
       changes,
@@ -276,7 +292,7 @@ export class ConfigService {
     const D = await this.drafts();
     for (let attempt = 0; attempt < 5; attempt++) {
       const draft = await this.loadDraft();
-      const config: TenantConfig = structuredClone(draft.config);
+      const config: TenantConfig = normalizeTenantConfig(structuredClone(draft.config));
       let layer: ConfigLayer;
       if (scope === 'company') layer = config.company;
       else {

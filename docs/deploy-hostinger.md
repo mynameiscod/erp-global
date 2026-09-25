@@ -97,6 +97,13 @@ git pull
 docker compose --env-file .env.production up -d --build
 ```
 
+**Upgrading to Step 4** (workflows and notifications): add these to an existing `.env.production` before the update, then run the commands above. `mongo-init` creates the new database user on start.
+
+| Setting                                                          | Value                                                                                                                         |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `MONGO_PASSWORD_WORKFLOW`                                        | a new random password, e.g. `openssl rand -base64 24`                                                                         |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` (optional, for web push) | run `node infra/scripts/gen-env.mjs --prod` on a copy elsewhere and take the two lines, or `npx web-push generate-vapid-keys` |
+
 ## Moving later (MongoDB Atlas, AWS, another host)
 
 - **Atlas:** create a cluster in the same region and one database user per service, as in `infra/docker/mongo/init.js`. Then set each service's `MONGO_URI` to the Atlas URI and remove the `mongo` and `mongo-init` services.

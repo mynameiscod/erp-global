@@ -348,6 +348,7 @@ export class TenantsService {
       industryCode: t.industryCode,
       currency: t.currency,
       locale: t.locale,
+      timezone: t.timezone,
       loginPolicy: loginPolicyOf(t),
     };
   }

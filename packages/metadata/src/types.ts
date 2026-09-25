@@ -1,3 +1,5 @@
+import type { AutomationDef, MessageTemplate, RuleDef, WorkflowDef } from './automation-types';
+
 /** Text in several languages, e.g. `{ en: 'Student', hi: 'छात्र', ar: 'طالب' }`. */
 export type LocalizedText = Record<string, string>;
 
@@ -147,6 +149,11 @@ export interface ConfigLayer {
   forms: FormLayout[];
   listViews: ListView[];
   numbering: NumberingSeries[];
+  /** One per entity. Missing in layers saved before Step 4; read them through `normalizeLayer`. */
+  workflows: WorkflowDef[];
+  rules: RuleDef[];
+  automations: AutomationDef[];
+  templates: MessageTemplate[];
   settings?: ConfigSettings;
 }
 
@@ -171,12 +178,38 @@ export interface EffectiveConfig extends Omit<ConfigLayer, 'entities'> {
 }
 
 export function emptyLayer(): ConfigLayer {
-  return { entities: [], picklists: [], forms: [], listViews: [], numbering: [] };
+  return {
+    entities: [],
+    picklists: [],
+    forms: [],
+    listViews: [],
+    numbering: [],
+    workflows: [],
+    rules: [],
+    automations: [],
+    templates: [],
+  };
+}
+
+/** Fills lists that older saved configurations do not have. */
+export function normalizeTenantConfig(config: TenantConfig): TenantConfig {
+  return {
+    company: normalizeLayer(config.company),
+    orgUnits: Object.fromEntries(
+      Object.entries(config.orgUnits).map(([id, l]) => [id, normalizeLayer(l)]),
+    ),
+  };
+}
+
+/** Fills lists that older saved layers do not have. */
+export function normalizeLayer<T extends Partial<ConfigLayer>>(layer: T): T & ConfigLayer {
+  return { ...emptyLayer(), ...layer } as T & ConfigLayer;
 }
 
 /** Columns every record has, usable in list views and sorting. */
 export const SYSTEM_COLUMNS = [
   'number',
+  'status',
   'createdAt',
   'updatedAt',
   'createdBy',

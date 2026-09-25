@@ -47,6 +47,9 @@ export function DynamicFields({
   onChange,
   idPrefix = 'f',
   showSectionTitles = true,
+  hidden,
+  readOnly,
+  required,
 }: {
   entity: EntityDef;
   cfg: EffectiveConfig;
@@ -56,50 +59,66 @@ export function DynamicFields({
   onChange: (key: string, value: unknown) => void;
   idPrefix?: string;
   showSectionTitles?: boolean;
+  /** From business rules and workflow locks. */
+  hidden?: Set<string>;
+  readOnly?: Set<string>;
+  required?: Set<string>;
 }) {
   const label = useLabel();
   const fields = new Map(entity.fields.map((f) => [f.key, f]));
   return (
     <>
-      {sectionsFor(entity, cfg).map((s) => (
-        <fieldset key={s.key} className="mb-3">
-          {showSectionTitles && (
-            <legend className="h6 text-body-secondary border-bottom pb-1">{label(s.label)}</legend>
-          )}
-          <Row>
-            {s.fields.map((key) => {
-              const f = fields.get(key)!;
-              const id = `${idPrefix}-${key}`;
-              return (
-                <Col md={12 / s.columns} key={key}>
-                  <Form.Group className="mb-3" controlId={id}>
-                    <Form.Label>
-                      {label(f.label)}
-                      {f.required && <span className="text-danger ms-1">*</span>}
-                    </Form.Label>
-                    <FieldInput
-                      field={f}
-                      id={id}
-                      cfg={cfg}
-                      currency={currency}
-                      value={values[key]}
-                      invalid={!!errors[key]}
-                      onChange={(v) => onChange(key, v)}
-                    />
-                    {errors[key] ? (
-                      <Form.Control.Feedback type="invalid" className="d-block">
-                        {errors[key]}
-                      </Form.Control.Feedback>
-                    ) : (
-                      f.help && <Form.Text muted>{label(f.help)}</Form.Text>
-                    )}
-                  </Form.Group>
-                </Col>
-              );
-            })}
-          </Row>
-        </fieldset>
-      ))}
+      {sectionsFor(entity, cfg)
+        .map((s) => ({ ...s, fields: s.fields.filter((k) => !hidden?.has(k)) }))
+        .filter((s) => s.fields.length)
+        .map((s) => (
+          <fieldset key={s.key} className="mb-3">
+            {showSectionTitles && (
+              <legend className="h6 text-body-secondary border-bottom pb-1">
+                {label(s.label)}
+              </legend>
+            )}
+            <Row>
+              {s.fields.map((key) => {
+                const f = fields.get(key)!;
+                const id = `${idPrefix}-${key}`;
+                return (
+                  <Col md={12 / s.columns} key={key}>
+                    <Form.Group className="mb-3" controlId={id}>
+                      <Form.Label>
+                        {label(f.label)}
+                        {(f.required || required?.has(key)) && (
+                          <span className="text-danger ms-1">*</span>
+                        )}
+                        {readOnly?.has(key) && (
+                          <i className="bi bi-lock ms-1 text-body-secondary small" />
+                        )}
+                      </Form.Label>
+                      <fieldset disabled={readOnly?.has(key)}>
+                        <FieldInput
+                          field={f}
+                          id={id}
+                          cfg={cfg}
+                          currency={currency}
+                          value={values[key]}
+                          invalid={!!errors[key]}
+                          onChange={(v) => onChange(key, v)}
+                        />
+                      </fieldset>
+                      {errors[key] ? (
+                        <Form.Control.Feedback type="invalid" className="d-block">
+                          {errors[key]}
+                        </Form.Control.Feedback>
+                      ) : (
+                        f.help && <Form.Text muted>{label(f.help)}</Form.Text>
+                      )}
+                    </Form.Group>
+                  </Col>
+                );
+              })}
+            </Row>
+          </fieldset>
+        ))}
     </>
   );
 }

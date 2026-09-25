@@ -12,6 +12,10 @@ export interface RecordDoc {
   /** Copy of the org unit path; kept current from org.unit.moved events. */
   orgPath: string;
   configVersion: number;
+  /** Workflow state; null for entities without a workflow. */
+  status?: string | null;
+  /** Set by automations that create records, so a retried run does not create a second one. */
+  sourceKey?: string;
   createdBy: string;
   updatedBy: string;
   createdAt: Date;
@@ -27,6 +31,8 @@ const recordSchema = new Schema<RecordDoc>(
     orgUnitId: { type: String, default: null },
     orgPath: { type: String, required: true },
     configVersion: { type: Number, required: true },
+    status: { type: String, default: null },
+    sourceKey: String,
     createdBy: { type: String, required: true },
     updatedBy: { type: String, required: true },
     deletedAt: Date,
@@ -37,6 +43,11 @@ recordSchema.plugin(tenantPlugin);
 recordSchema.index({ tenantId: 1, entity: 1, createdAt: -1 });
 recordSchema.index({ tenantId: 1, entity: 1, orgPath: 1 });
 recordSchema.index({ tenantId: 1, entity: 1, number: 1 });
+recordSchema.index({ tenantId: 1, entity: 1, status: 1 });
+recordSchema.index(
+  { tenantId: 1, sourceKey: 1 },
+  { unique: true, partialFilterExpression: { sourceKey: { $type: 'string' } } },
+);
 // One index serves filters and sorts on any custom field, for every entity and tenant.
 recordSchema.index({ tenantId: 1, entity: 1, 'data.$**': 1 });
 

@@ -25,6 +25,8 @@ module.exports = function preset(dir, overrides = {}) {
     },
     moduleNameMapper,
     testTimeout: 60000,
+    // On GitHub Actions, failures also become annotations, readable without opening the logs.
+    reporters: process.env.GITHUB_ACTIONS ? ['default', 'github-actions'] : ['default'],
     ...overrides,
   };
 };

@@ -16,6 +16,10 @@ export class ContextMiddleware implements NestMiddleware {
     const incoming = req.header(CORRELATION_HEADER);
     const correlationId = incoming && VALID_ID.test(incoming) ? incoming : randomUUID();
     res.setHeader(CORRELATION_HEADER, correlationId);
-    runWithContext({ correlationId }, () => next());
+    // First language of Accept-Language, e.g. "hi-IN,hi;q=0.9" gives "hi".
+    const lang = /^([a-z]{2,3})/i
+      .exec(String(req.headers['accept-language'] ?? ''))?.[1]
+      ?.toLowerCase();
+    runWithContext({ correlationId, lang }, () => next());
   }
 }

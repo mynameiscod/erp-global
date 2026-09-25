@@ -4,7 +4,7 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { Connection } from 'mongoose';
 import request from 'supertest';
-import { signAccessToken } from '@erp/auth';
+import { signAccessToken, signServiceToken } from '@erp/auth';
 import { subjectFor, type AclEntry, type Permission } from '@erp/contracts';
 import { emptyLayer, platformBaseLayer, resolveEffective, type ConfigLayer } from '@erp/metadata';
 import {
@@ -14,7 +14,14 @@ import {
   sharedMemoryBus,
   UpstreamError,
 } from '@erp/service-kit';
-import { fakeId, serviceTestEnv, startMongo, testKeys, type TestMongo } from '@erp/testing';
+import {
+  fakeId,
+  serviceTestEnv,
+  startMongo,
+  testKeys,
+  TEST_INTERNAL_SECRET,
+  type TestMongo,
+} from '@erp/testing';
 import { AppModule } from './app.module';
 import { CLIENTS } from './clients';
 
@@ -117,6 +124,13 @@ describe('records-service', () => {
     },
     org: {
       get: async (path: string) => {
+        if (path.endsWith('/ancestors')) {
+          const u = units[path.split('/').at(-2)!];
+          return u.path
+            .split('/')
+            .filter(Boolean)
+            .map((id) => units[id]);
+        }
         const u = units[path.split('/').pop()!];
         if (!u) throw notFound('org-service');
         return u;
@@ -124,6 +138,7 @@ describe('records-service', () => {
     },
     identity: { get: async () => ({}) },
     files: { get: async () => ({}) },
+    access: { get: async () => [{ name: 'Store Manager', key: null }] },
   };
 
   const create = (
@@ -365,5 +380,205 @@ describe('records-service', () => {
       .countDocuments({ tenantId: 'tA', orgPath: units[HYD].path });
     expect(moved).toBeGreaterThan(0);
     expect(stale).toBe(0);
+  });
+
+  describe('rules and workflow', () => {
+    const svc = () =>
+      signServiceToken({ sub: 'svc:workflow-service', tid: 'tA' }, TEST_INTERNAL_SECRET);
+    const clerk = bearer('tA', [
+      {
+        ou: ROOT,
+        path: units[ROOT].path,
+        p: [
+          'records.purchase.read',
+          'records.purchase.create',
+          'records.purchase.update',
+          'records.purchase.delete',
+        ],
+      },
+    ]);
+    let id = '';
+
+    beforeAll(() => {
+      company.entities.push({
+        key: 'purchase',
+        kind: 'custom',
+        label: { en: 'Purchase' },
+        pluralLabel: { en: 'Purchases' },
+        titleField: 'title',
+        fields: [
+          { key: 'title', type: 'text', label: { en: 'Title' }, required: true },
+          { key: 'amount', type: 'currency', label: { en: 'Amount' } },
+          { key: 'reason', type: 'longtext', label: { en: 'Reason' } },
+          { key: 'size', type: 'text', label: { en: 'Size' } },
+          { key: 'note', type: 'text', label: { en: 'Note' } },
+        ],
+      });
+      company.rules = [
+        {
+          key: 'size',
+          entity: 'purchase',
+          on: 'save',
+          effect: 'set',
+          field: 'size',
+          value: 'IF(amount > 1000, "big", "small")',
+        },
+        {
+          key: 'why',
+          entity: 'purchase',
+          on: 'save',
+          effect: 'require',
+          field: 'reason',
+          condition: 'amount > 1000',
+        },
+        {
+          key: 'cap',
+          entity: 'purchase',
+          on: 'save',
+          effect: 'block',
+          condition: 'amount > 100000 && !HAS_ROLE("Finance")',
+          message: { en: 'Only Finance can raise requests above 1 lakh', hi: 'केवल वित्त विभाग' },
+        },
+        {
+          key: 'blr',
+          entity: 'purchase',
+          on: 'update',
+          effect: 'readonly',
+          field: 'note',
+          condition: 'IN_UNIT("BLR")',
+        },
+      ];
+      company.workflows = [
+        {
+          entity: 'purchase',
+          initialState: 'draft',
+          states: [
+            { key: 'draft', label: { en: 'Draft' } },
+            {
+              key: 'pending',
+              label: { en: 'Pending approval' },
+              locked: true,
+              editableFields: ['note'],
+            },
+            { key: 'approved', label: { en: 'Approved' }, locked: true },
+          ],
+          actions: [{ key: 'submit', label: { en: 'Submit' }, from: ['draft'], to: 'pending' }],
+        },
+      ];
+    });
+
+    it('applies rules on the server: set, require, block with a translated message', async () => {
+      const missing = await create(
+        clerk,
+        BLR,
+        { title: 'Laptops', amount: '5000' },
+        'purchase',
+      ).expect(400);
+      expect(missing.body.error.details).toEqual([{ path: 'reason', message: 'Required' }]);
+      const blocked = await http()
+        .post('/api/v1/records/purchase')
+        .set('authorization', clerk)
+        .set('accept-language', 'hi')
+        .send({ orgUnitId: BLR, data: { title: 'Servers', amount: '500000', reason: 'x' } })
+        .expect(400);
+      expect(blocked.body.error.details).toEqual([
+        { path: '_record', message: 'केवल वित्त विभाग' },
+      ]);
+      const ok = await create(
+        clerk,
+        BLR,
+        { title: 'Laptops', amount: '5000', reason: 'Team', size: 'tiny', note: 'n1' },
+        'purchase',
+      ).expect(201);
+      expect(ok.body).toMatchObject({ status: 'draft', data: { size: 'big' } });
+      id = ok.body.id;
+      // Read-only in Bangalore: the note keeps its value.
+      const upd = await http()
+        .patch(`/api/v1/records/purchase/${id}`)
+        .set('authorization', clerk)
+        .send({ data: { note: 'n2' } })
+        .expect(200);
+      expect(upd.body.data.note).toBe('n1');
+    });
+
+    it('moves the state only from the expected state and locks the record', async () => {
+      const move = (from: string | null, to: string) =>
+        http()
+          .post(`/internal/records/purchase/${id}/status`)
+          .set('x-service-token', svc())
+          .send({ from, to, action: 'submit' });
+      await move('draft', 'pending').expect(200);
+      await move('draft', 'pending').expect(409);
+
+      const locked = await http()
+        .patch(`/api/v1/records/purchase/${id}`)
+        .set('authorization', clerk)
+        .send({ data: { title: 'Changed' } })
+        .expect(409);
+      expect(locked.body.error.code).toBe('RECORD_LOCKED');
+      expect(locked.body.error.message).toContain('Pending approval');
+      await http().delete(`/api/v1/records/purchase/${id}`).set('authorization', clerk).expect(409);
+
+      // Automations are not bound by locks.
+      const sys = await http()
+        .patch(`/internal/records/purchase/${id}`)
+        .set('x-service-token', svc())
+        .send({ data: { title: 'Changed by automation' }, depth: 1 })
+        .expect(200);
+      expect(sys.body.data.title).toBe('Changed by automation');
+
+      const events = await (async () => {
+        for (let i = 0; i < 100; i++) {
+          const list = sharedMemoryBus().published.filter(
+            (e) => (e.payload as { recordId?: string }).recordId === id,
+          );
+          if (list.some((e) => (e.payload as { depth?: number }).depth === 1)) return list;
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        return [];
+      })();
+      const status = events.find((e) => e.type === 'records.record.status_changed');
+      expect(status?.payload).toMatchObject({
+        from: 'draft',
+        to: 'pending',
+        action: 'submit',
+        orgPath: units[BLR].path,
+      });
+      expect(
+        events.filter((e) => e.type === 'records.record.updated').at(-1)?.payload,
+      ).toMatchObject({ depth: 1 });
+    });
+
+    it('creates a record once per source key', async () => {
+      const body = {
+        orgUnitId: BLR,
+        data: { title: 'Auto', reason: 'r' },
+        depth: 1,
+        sourceKey: 'auto:e1:purchase',
+      };
+      const a = await http()
+        .post('/internal/records/purchase')
+        .set('x-service-token', svc())
+        .send(body)
+        .expect(201);
+      const b = await http()
+        .post('/internal/records/purchase')
+        .set('x-service-token', svc())
+        .send(body)
+        .expect(201);
+      expect(a.body.id).toBe(b.body.id);
+      const list = await http()
+        .get('/internal/records/purchase?pageSize=50')
+        .set('x-service-token', svc())
+        .expect(200);
+      expect(
+        list.body.filter((r: { data: { title: string } }) => r.data.title === 'Auto'),
+      ).toHaveLength(1);
+      const byStatus = await http()
+        .get('/api/v1/records/purchase?status=pending')
+        .set('authorization', clerk)
+        .expect(200);
+      expect(byStatus.body.items.map((r: { id: string }) => r.id)).toEqual([id]);
+    });
   });
 });

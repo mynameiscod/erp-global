@@ -135,7 +135,7 @@ export function createGateway(env: GatewayEnv, deps: GatewayDeps = {}): express.
         target: route.target,
         changeOrigin: true,
         xfwd: true,
-        proxyTimeout: 30_000,
+        proxyTimeout: route.stream ? 0 : 30_000,
         pathFilter: route.prefixes,
         on: {
           error: (err, _req, res) => {

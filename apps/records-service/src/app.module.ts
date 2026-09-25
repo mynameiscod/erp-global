@@ -4,12 +4,12 @@ import { EventTypes, EVENTS_STREAM, subjectFor, type OrgUnitMovedPayload } from 
 import { handleOnce, type EventBus } from '@erp/events';
 import { EVENT_BUS, MONGO_CONNECTION, ServiceCoreModule } from '@erp/service-kit';
 import { CLIENTS, createClients, type Clients } from './clients';
-import { RecordsController } from './records.controller';
+import { InternalRecordsController, RecordsController } from './records.controller';
 import { RecordsService } from './records.service';
 
 @Module({
   imports: [ServiceCoreModule.forRoot({ name: 'records-service' })],
-  controllers: [RecordsController],
+  controllers: [RecordsController, InternalRecordsController],
   providers: [RecordsService, { provide: CLIENTS, useFactory: createClients }],
 })
 export class AppModule implements OnApplicationBootstrap {

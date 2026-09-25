@@ -125,12 +125,17 @@ export class UsersService {
       language?: string;
       timezone?: string;
       custom?: Record<string, unknown>;
+      managerId?: string | null;
     },
   ) {
     const user = await this.load(id);
     const set: Record<string, unknown> = {};
     for (const k of ['name', 'language', 'timezone'] as const)
       if (input[k] !== undefined) set[k] = input[k];
+    if (input.managerId !== undefined) {
+      if (input.managerId) await this.assertManager(id, input.managerId);
+      set.managerId = input.managerId ?? undefined;
+    }
     if (input.custom !== undefined) {
       set.custom = await validateCustomFields(
         this.clients.config,
@@ -295,7 +300,126 @@ export class UsersService {
 
   async internalGet(id: string) {
     const u = await this.load(id);
-    return { id: String(u._id), email: u.email, name: u.name, status: u.status };
+    return this.internalDto(u);
+  }
+
+  private internalDto(u: User) {
+    return {
+      id: String(u._id),
+      email: u.email,
+      name: u.name,
+      status: u.status,
+      language: u.language,
+      timezone: u.timezone,
+      phone: u.phone ?? null,
+      managerId: u.managerId ?? null,
+    };
+  }
+
+  /** Several users at once, for notifications and approver lists. Unknown ids are skipped. */
+  async internalBatch(ids: string[]) {
+    const valid = ids.filter((i) => Types.ObjectId.isValid(i)).slice(0, 500);
+    const users = await (await this.auth.users()).find({ _id: { $in: valid } }).lean();
+    return users.map((u) => this.internalDto(u));
+  }
+
+  /** Users whose approvals `userId` may act on right now (one hop, never a chain). */
+  async internalDelegators(userId: string) {
+    const now = new Date();
+    const users = await (
+      await this.auth.users()
+    )
+      .find({
+        'delegation.toUserId': userId,
+        'delegation.from': { $lte: now },
+        'delegation.until': { $gt: now },
+        status: 'active',
+      })
+      .select({ _id: 1 })
+      .lean();
+    return users.map((u) => String(u._id));
+  }
+
+  /** Who may act for `userId` right now, if anyone. */
+  async internalDelegate(userId: string) {
+    const u = await this.load(userId);
+    const d = u.delegation;
+    const now = new Date();
+    return {
+      toUserId: d && d.from <= now && d.until > now ? d.toUserId : null,
+    };
+  }
+
+  // ---- manager and delegation ----
+
+  /** The manager must be an active user of the company, and not create a loop. */
+  private async assertManager(userId: string, managerId: string) {
+    if (managerId === userId) throw AppError.badRequest('A user cannot report to themselves');
+    const Users = await this.auth.users();
+    let current: string | undefined = managerId;
+    for (let i = 0; i < 50 && current; i++) {
+      const m: User | null = await Users.findById(current).lean();
+      if (!m) throw AppError.badRequest('Manager not found');
+      if (i === 0 && m.status === 'deactivated')
+        throw AppError.badRequest('This manager is deactivated');
+      if (m.managerId === userId) throw AppError.badRequest('This would make a reporting loop');
+      current = m.managerId;
+    }
+  }
+
+  async myDelegation() {
+    const user = await this.load(requireContext().actor!.id);
+    const d = user.delegation;
+    if (!d) return null;
+    const to = await (await this.auth.users()).findById(d.toUserId).lean();
+    return {
+      toUserId: d.toUserId,
+      toName: to?.name ?? null,
+      from: d.from,
+      until: d.until,
+      note: d.note ?? null,
+      active: d.from <= new Date() && d.until > new Date(),
+    };
+  }
+
+  async setDelegation(input: { toUserId: string; from: string; until: string; note?: string }) {
+    const userId = requireContext().actor!.id;
+    if (input.toUserId === userId) throw AppError.badRequest('Choose someone else');
+    const to = await this.load(input.toUserId).catch(() => null);
+    if (!to || to.status !== 'active') throw AppError.badRequest('Choose an active user');
+    const delegation = {
+      toUserId: input.toUserId,
+      from: new Date(input.from),
+      until: new Date(input.until),
+      note: input.note,
+    };
+    if (delegation.until <= new Date()) throw AppError.badRequest('The end date has passed');
+    const Users = await this.auth.users();
+    await this.conn.transaction(async (session) => {
+      await Users.updateOne({ _id: userId }, { $set: { delegation } }, { session });
+      await this.outbox.record(
+        EventTypes.DelegationSet,
+        { userId, toUserId: input.toUserId, from: input.from, until: input.until },
+        { session },
+      );
+    });
+    return this.myDelegation();
+  }
+
+  async clearDelegation() {
+    const userId = requireContext().actor!.id;
+    const Users = await this.auth.users();
+    await this.conn.transaction(async (session) => {
+      const res = await Users.updateOne(
+        { _id: userId, delegation: { $exists: true } },
+        { $unset: { delegation: '' } },
+        { session },
+      );
+      if (res.modifiedCount) {
+        await this.outbox.record(EventTypes.DelegationCleared, { userId }, { session });
+      }
+    });
+    return null;
   }
 
   /** Creates the first Super Admin from environment settings, once. */

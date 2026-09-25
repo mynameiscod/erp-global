@@ -27,6 +27,8 @@ const SettingsPage = page(() => import('./pages/SettingsPage'), 'SettingsPage');
 const AccountPage = page(() => import('./pages/AccountPage'), 'AccountPage');
 const TenantsPage = page(() => import('./pages/TenantsPage'), 'TenantsPage');
 const StudioPage = page(() => import('./studio/StudioPage'), 'StudioPage');
+const ApprovalsPage = page(() => import('./pages/ApprovalsPage'), 'ApprovalsPage');
+const NotificationsPage = page(() => import('./pages/NotificationsPage'), 'NotificationsPage');
 const RecordsListPage = page(() => import('./records/RecordsListPage'), 'RecordsListPage');
 const RecordFormPage = page(() => import('./records/RecordFormPage'), 'RecordFormPage');
 
@@ -113,6 +115,8 @@ export function App() {
             }
           />
           <Route path="account" element={<AccountPage />} />
+          <Route path="approvals" element={<ApprovalsPage />} />
+          <Route path="notifications" element={<NotificationsPage />} />
           <Route
             path="studio/*"
             element={

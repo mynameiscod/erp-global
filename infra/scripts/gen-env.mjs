@@ -46,6 +46,8 @@ const dev = {
   CONFIG_SERVICE_URL: 'http://127.0.0.1:3008',
   RECORDS_SERVICE_URL: 'http://127.0.0.1:3009',
   FILE_SERVICE_URL: 'http://127.0.0.1:3010',
+  WORKFLOW_SERVICE_URL: 'http://127.0.0.1:3011',
+  NOTIFICATION_SERVICE_URL: 'http://127.0.0.1:3007',
   STORAGE_DRIVER: 's3',
   S3_ENDPOINT: 'http://127.0.0.1:8333',
   S3_ACCESS_KEY: 'erp-files',
@@ -80,6 +82,7 @@ const production = {
       'CONFIG',
       'RECORDS',
       'FILES',
+      'WORKFLOW',
       'PROVISIONER',
     ].map((s) => [`MONGO_PASSWORD_${s}`, secret()]),
   ),
@@ -103,7 +106,20 @@ const production = {
   WHATSAPP_TEMPLATE_LANGUAGES: 'en_US',
 };
 
-const values = { ...(prod ? production : dev), ...common };
+/** VAPID keys for web push: a P-256 key pair, base64url (public key uncompressed). */
+function vapidKeys() {
+  const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  const pub = publicKey.export({ format: 'jwk' });
+  const priv = privateKey.export({ format: 'jwk' });
+  const raw = Buffer.concat([
+    Buffer.from([4]),
+    Buffer.from(pub.x, 'base64url'),
+    Buffer.from(pub.y, 'base64url'),
+  ]);
+  return { VAPID_PUBLIC_KEY: raw.toString('base64url'), VAPID_PRIVATE_KEY: priv.d };
+}
+
+const values = { ...(prod ? production : dev), ...common, ...vapidKeys() };
 const header = prod
   ? '# Production secrets. Keep this file private (chmod 600) and back it up securely.\n# Edit APP_URL, PLATFORM_ADMIN_EMAIL and the SMTP settings before the first start.\n'
   : '# Local development settings. Generated; safe to delete and regenerate.\n';

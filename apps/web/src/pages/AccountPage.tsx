@@ -22,6 +22,7 @@ import type { LinkedAccountDto, MfaMethod, OtpSent } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { applyFieldErrors, ErrorAlert, Field, PageHeader } from '../components/ui';
 import { formatDateTime } from '../lib/format';
+import { DelegationCard, NotificationPreferencesCard } from './AccountWorkflowCards';
 
 /** Runs an action with a busy flag and an error slot, the pattern every card here uses. */
 function useAction() {
@@ -493,6 +494,12 @@ export function AccountPage() {
         </Col>
         <Col lg={6}>
           <PasswordCard />
+        </Col>
+        <Col lg={6}>
+          <DelegationCard />
+        </Col>
+        <Col lg={6}>
+          <NotificationPreferencesCard />
         </Col>
       </Row>
     </>
