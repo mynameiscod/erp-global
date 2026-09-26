@@ -511,7 +511,8 @@
     "identifier": {
       "invalid": "मान्य {{name}} नहीं है",
       "invalidExample": "मान्य {{name}} नहीं है, उदाहरण: {{example}}",
-      "checkDigit": "{{name}} का चेक अंक मेल नहीं खाता"
+      "checkDigit": "{{name}} का चेक अंक मेल नहीं खाता",
+      "placeholder": "उदा. {{example}}"
     },
     "tax": {
       "summary": "कर सारांश",

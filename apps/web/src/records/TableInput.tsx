@@ -93,7 +93,9 @@ export function TableInput({
                         ? 90
                         : c.type === 'text' || c.type === 'lookup'
                           ? 180
-                          : 110,
+                          : c.type === 'currency'
+                            ? 160
+                            : 110,
                     }}
                   >
                     {isCalculated(c) ? (

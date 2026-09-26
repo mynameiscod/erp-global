@@ -511,7 +511,8 @@
     "identifier": {
       "invalid": "Not a valid {{name}}",
       "invalidExample": "Not a valid {{name}}, e.g. {{example}}",
-      "checkDigit": "{{name}} check digit does not match"
+      "checkDigit": "{{name}} check digit does not match",
+      "placeholder": "e.g. {{example}}"
     },
     "tax": {
       "summary": "Tax summary",

@@ -193,6 +193,10 @@ describe('India pack', () => {
       ]),
     );
     expect(cfg.printTemplates.map((t) => t.key)).toContain('gst_invoice');
+    // Labels name the entity in each language; keys and paths use its key.
+    const hsn = cfg.reports.find((r) => r.key === 'gstr1_hsn')!;
+    expect(hsn.label.en).toContain('(Bill)');
+    expect(hsn.entity).toBe('shop_bill');
     expect(cfg.reports.map((r) => r.key)).toEqual(
       expect.arrayContaining(['gstr1_b2b', 'gstr1_b2cs', 'gstr1_hsn', 'gstr3b_outward']),
     );

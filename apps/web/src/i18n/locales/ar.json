@@ -511,7 +511,8 @@
     "identifier": {
       "invalid": "{{name}} غير صالح",
       "invalidExample": "{{name}} غير صالح، مثال: {{example}}",
-      "checkDigit": "رقم التحقق في {{name}} غير مطابق"
+      "checkDigit": "رقم التحقق في {{name}} غير مطابق",
+      "placeholder": "مثال: {{example}}"
     },
     "tax": {
       "summary": "ملخص الضريبة",

@@ -19,6 +19,7 @@ import {
   isDateType,
   isNumericType,
   pickText,
+  RELATIVE_DATES,
   resolveReportPath,
   type ReportDef,
   type ReportFilter,
@@ -254,6 +255,29 @@ function PromptInputs({
                 {list.options.map((o) => (
                   <option key={o.value} value={o.value}>
                     {label(o.label)}
+                  </option>
+                ))}
+              </Form.Select>
+            ) : f.op === 'relative' ? (
+              <Form.Select
+                id={`prompt-${i}`}
+                size="sm"
+                value={values[String(i)]?.relative?.period ?? f.relative?.period ?? 'this_month'}
+                onChange={(e) =>
+                  onChange({
+                    ...values,
+                    [String(i)]: {
+                      relative: {
+                        period: e.target.value as (typeof RELATIVE_DATES)[number],
+                        n: f.relative?.n,
+                      },
+                    },
+                  })
+                }
+              >
+                {RELATIVE_DATES.filter((p) => !p.endsWith('n_days')).map((p) => (
+                  <option key={p} value={p}>
+                    {t(`reports.period.${p}`)}
                   </option>
                 ))}
               </Form.Select>

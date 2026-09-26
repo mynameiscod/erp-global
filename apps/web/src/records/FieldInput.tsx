@@ -257,7 +257,9 @@ function IdentifierInput({ field, value, onChange, cfg, invalid, id }: FieldInpu
         autoComplete="off"
         spellCheck={false}
         maxLength={field.maxLength ?? 500}
-        placeholder={type?.example}
+        placeholder={
+          type?.example ? t('records.identifier.placeholder', { example: type.example }) : undefined
+        }
         value={str}
         isInvalid={invalid || !!problem}
         onBlur={() => setTouched(true)}

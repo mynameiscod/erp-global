@@ -126,10 +126,37 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-/** `$entity` stands for the entity's key, `$lines` for its line items table. */
-const substitute = <T>(item: T, entity: string, lines = 'lines'): T =>
+/** In labels, `$entity` becomes the entity's name in each language. */
+const nameLabels = (v: unknown, names: LocalizedText | undefined, entity: string): unknown => {
+  if (Array.isArray(v)) return v.map((x) => nameLabels(x, names, entity));
+  if (!v || typeof v !== 'object') return v;
+  return Object.fromEntries(
+    Object.entries(v).map(([k, x]) => {
+      const text =
+        k === 'label' && x && typeof x === 'object' && !Array.isArray(x)
+          ? Object.values(x).every((s) => typeof s === 'string')
+          : false;
+      if (!text) return [k, nameLabels(x, names, entity)];
+      return [
+        k,
+        Object.fromEntries(
+          Object.entries(x as Record<string, string>).map(([lang, s]) => [
+            lang,
+            s.replace(/\$entity/g, names?.[lang] ?? names?.en ?? entity),
+          ]),
+        ),
+      ];
+    }),
+  );
+};
+
+/**
+ * `$entity` stands for the entity's key (its name in labels), `$lines` for its line
+ * items table.
+ */
+const substitute = <T>(item: T, entity: string, lines = 'lines', names?: LocalizedText): T =>
   JSON.parse(
-    JSON.stringify(item)
+    JSON.stringify(nameLabels(item, names, entity))
       .replace(/\$entity/g, entity)
       .replace(/\$lines/g, lines),
   ) as T;
@@ -168,6 +195,7 @@ export function packLayers(
     for (const [entity, r] of roles) {
       if (!r.has(p.role)) continue;
       const lines = merged.get(entity)?.tax?.lines ?? 'lines';
+      const names = merged.get(entity)?.label;
       const suffix = (key: string) => (many(p) ? `${key}_${entity}`.slice(0, 40) : key);
       if (p.fields?.length || p.tax || p.lineColumns?.length) {
         const patch: EntityPatch = {
@@ -188,11 +216,11 @@ export function packLayers(
         out.entities.push(patch);
       }
       for (const t of p.printTemplates ?? [])
-        out.printTemplates.push({ ...substitute(t, entity, lines), key: suffix(t.key) });
+        out.printTemplates.push({ ...substitute(t, entity, lines, names), key: suffix(t.key) });
       for (const rep of p.reports ?? [])
-        out.reports.push({ ...substitute(rep, entity, lines), key: suffix(rep.key) });
+        out.reports.push({ ...substitute(rep, entity, lines, names), key: suffix(rep.key) });
       for (const rule of p.rules ?? [])
-        out.rules.push({ ...substitute(rule, entity, lines), key: suffix(rule.key) });
+        out.rules.push({ ...substitute(rule, entity, lines, names), key: suffix(rule.key) });
     }
   }
   return [...layers, out];
