@@ -329,6 +329,28 @@ export class AutomationService {
         });
         return action.action;
       }
+      case 'document': {
+        if (record.deleted) throw new Error('The record was deleted');
+        if (!this.clients.documents) throw new Error('DOCUMENT_SERVICE_URL is not configured');
+        const res = await this.clients.documents.post<{ fileName: string; emailedTo: string[] }>(
+          '/internal/documents/generate',
+          {
+            entity: record.entity,
+            recordId: record.id,
+            template: action.template,
+            attachField: action.attachField,
+            emailFields: action.emailFields,
+            emailTo: action.emailTo,
+            subject: action.subject,
+            message: action.message,
+            depth: depth,
+          },
+          { timeoutMs: 90_000 },
+        );
+        return res.emailedTo.length
+          ? `${res.fileName} emailed to ${res.emailedTo.join(', ')}`
+          : res.fileName;
+      }
       case 'webhook': {
         const secret = await this.webhookSecret();
         const deliveryId = `${input.runKey}:${index}`;

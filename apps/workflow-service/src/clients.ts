@@ -7,6 +7,8 @@ export const workflowEnvSchema = baseEnvSchema.extend({
   ACCESS_SERVICE_URL: z.string().url(),
   IDENTITY_SERVICE_URL: z.string().url(),
   ORG_SERVICE_URL: z.string().url(),
+  /** PDFs for the "document" automation action. */
+  DOCUMENT_SERVICE_URL: z.string().url().optional(),
   /** Timers, schedules and digests. Off in tests, which run the scheduler by hand. */
   SCHEDULER_ENABLED: z
     .enum(['true', 'false'])
@@ -30,6 +32,7 @@ export interface Clients {
   access: Pick<ServiceClient, 'get'>;
   identity: Pick<ServiceClient, 'get' | 'post'>;
   org: Pick<ServiceClient, 'get'>;
+  documents?: Pick<ServiceClient, 'post'>;
 }
 
 export function loadWorkflowEnv(): WorkflowEnv {
@@ -45,6 +48,9 @@ export function createClients(env: WorkflowEnv): Clients {
     access: make('access-service', env.ACCESS_SERVICE_URL),
     identity: make('identity-service', env.IDENTITY_SERVICE_URL),
     org: make('org-service', env.ORG_SERVICE_URL),
+    documents: env.DOCUMENT_SERVICE_URL
+      ? make('document-service', env.DOCUMENT_SERVICE_URL)
+      : undefined,
   };
 }
 

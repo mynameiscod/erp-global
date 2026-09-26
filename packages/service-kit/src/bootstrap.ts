@@ -5,7 +5,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import type { BaseEnv } from './env';
-import { SERVICE_ENV, SERVICE_NAME } from './tokens';
+import { BODY_LIMIT, SERVICE_ENV, SERVICE_NAME } from './tokens';
 
 export interface AppSetup {
   /** Extra Express setup, e.g. cookie parsing in identity-service. */
@@ -16,8 +16,16 @@ export async function createServiceApp(
   module: Type,
   setup: AppSetup = {},
 ): Promise<INestApplication> {
-  const app = await NestFactory.create<NestExpressApplication>(module, { bufferLogs: true });
+  const app = await NestFactory.create<NestExpressApplication>(module, {
+    bufferLogs: true,
+    bodyParser: false,
+  });
   app.useLogger(app.get(Logger));
+  // Body limits are per service: most take small JSON, a few receive files.
+  const limit = app.get<string>(BODY_LIMIT);
+  app.useBodyParser('json', { limit });
+  app.useBodyParser('urlencoded', { extended: true, limit });
+  app.useBodyParser('raw', { type: 'application/octet-stream', limit });
   app.use(helmet());
   app.enableShutdownHooks();
   setup.configure?.(app);

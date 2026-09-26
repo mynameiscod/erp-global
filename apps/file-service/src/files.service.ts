@@ -158,6 +158,26 @@ export class FilesService {
     };
   }
 
+  /** A file made by another service (a PDF, a report export), sent as raw bytes. */
+  async internalUpload(name: string, contentType: string, bytes: Buffer) {
+    if (!Buffer.isBuffer(bytes) || !bytes.length) throw AppError.badRequest('Send the file bytes');
+    return this.upload({
+      originalname: name,
+      mimetype: contentType,
+      size: bytes.length,
+      buffer: bytes,
+    });
+  }
+
+  /** The bytes of a file, for attaching it to an email. */
+  async internalBytes(id: string): Promise<{ file: FileDoc; bytes: Buffer }> {
+    const file = await this.load(id);
+    const chunks: Buffer[] = [];
+    for await (const c of await this.storage.get(file.storageKey))
+      chunks.push(Buffer.from(c as Buffer));
+    return { file, bytes: Buffer.concat(chunks) };
+  }
+
   async upload(
     file: { originalname: string; mimetype: string; size: number; buffer: Buffer } | undefined,
   ) {

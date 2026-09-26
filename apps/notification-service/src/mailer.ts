@@ -22,10 +22,11 @@ export const MAILER = Symbol('MAILER');
 
 export interface Mailer {
   send(msg: {
-    to: string;
+    to: string | string[];
     subject: string;
     text: string;
-    html: string;
+    html?: string;
+    attachments?: { filename: string; content: Buffer; contentType: string }[];
   }): Promise<{ messageId: string }>;
 }
 

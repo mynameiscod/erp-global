@@ -94,6 +94,7 @@ function checkAutomation(
   workflows: Map<string, WorkflowDef>,
   templates: Set<string>,
   add: Add,
+  printTemplates: ConfigLayer['printTemplates'] = [],
 ): void {
   const p = `automations.${a.key}`;
   const entity = entities.get(a.entity);
@@ -147,6 +148,24 @@ function checkAutomation(
         break;
       case 'webhook':
         break;
+      case 'document': {
+        const own = printTemplates.filter((t) => t.entity === a.entity);
+        if (act.template ? !own.some((t) => t.key === act.template) : !own.length)
+          add(
+            ap,
+            act.template
+              ? `Unknown print template "${act.template}"`
+              : `"${a.entity}" has no print template`,
+          );
+        const field = (k: string) => entity.fields.find((f) => f.key === k);
+        if (act.attachField && field(act.attachField)?.type !== 'file')
+          add(ap, `"${act.attachField}" must be a file field`);
+        for (const k of act.emailFields ?? [])
+          if (field(k)?.type !== 'email') add(ap, `"${k}" must be an email field`);
+        if (!act.attachField && !act.emailFields?.length && !act.emailTo?.length)
+          add(ap, 'Choose where the PDF goes: a file field, or who to email it to');
+        break;
+      }
     }
   });
 }
@@ -174,5 +193,6 @@ export function checkAutomationItems(merged: ConfigLayer, add: Add): void {
       checkFormula(r.value, entity, `${p}.value`, add);
     }
   }
-  for (const a of merged.automations) checkAutomation(a, entities, workflows, templates, add);
+  for (const a of merged.automations)
+    checkAutomation(a, entities, workflows, templates, add, merged.printTemplates);
 }

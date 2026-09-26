@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
@@ -66,6 +67,20 @@ export class FilesController {
 @Internal()
 export class InternalFilesController {
   constructor(private readonly files: FilesService) {}
+
+  /** Raw bytes (application/octet-stream); the name and real type come in the query. */
+  @Post('bytes')
+  upload(@Query('name') name: string, @Query('type') type: string, @Body() body: Buffer) {
+    return this.files.internalUpload(String(name ?? 'file'), String(type ?? ''), body);
+  }
+
+  @Get(':id/bytes')
+  async bytes(@Param('id') id: string, @Res() res: Response) {
+    const { file, bytes } = await this.files.internalBytes(id);
+    res.setHeader('Content-Type', file.contentType);
+    res.setHeader('X-File-Name', encodeURIComponent(file.name));
+    res.send(bytes);
+  }
 
   @Get(':id')
   get(@Param('id') id: string) {

@@ -35,6 +35,7 @@ import { HttpErrorFilter } from './errors';
 import { HttpPlacementResolver } from './placement';
 import { ServiceClient } from './service-client';
 import {
+  BODY_LIMIT,
   EVENT_BUS,
   MONGO_CONNECTION,
   PLACEMENT_RESOLVER,
@@ -58,6 +59,8 @@ export interface CoreModuleOptions {
   name: string;
   /** tenant-service resolves placement from its own data instead of over HTTP. */
   placementResolver?: Type<PlacementResolver>;
+  /** Largest request body, e.g. `20mb` for services that receive files. Default `1mb`. */
+  bodyLimit?: string;
 }
 
 @Controller()
@@ -127,6 +130,7 @@ export class ServiceCoreModule implements NestModule {
   static forRoot(options: CoreModuleOptions): DynamicModule {
     const providers: Provider[] = [
       { provide: SERVICE_NAME, useValue: options.name },
+      { provide: BODY_LIMIT, useValue: options.bodyLimit ?? '1mb' },
       { provide: SERVICE_ENV, useFactory: () => loadEnv(baseEnvSchema) },
       {
         provide: AUTH_OPTIONS,
@@ -222,6 +226,7 @@ export class ServiceCoreModule implements NestModule {
       providers,
       exports: [
         SERVICE_NAME,
+        BODY_LIMIT,
         SERVICE_ENV,
         AUTH_OPTIONS,
         MONGO_CONNECTION,

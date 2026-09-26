@@ -124,7 +124,21 @@ export type AutomationAction =
   | { type: 'create'; entity: string; orgUnit?: 'same' | 'none'; set: FieldAssignment[] }
   | { type: 'webhook'; url: string }
   /** Runs a workflow action (e.g. submit) as the system. */
-  | { type: 'workflow_action'; action: string };
+  | { type: 'workflow_action'; action: string }
+  /**
+   * Makes the record's PDF with a print template, then puts it in a file field and/or
+   * emails it (to fixed addresses, or to email fields of the record such as the customer's).
+   */
+  | {
+      type: 'document';
+      /** Print template key; the entity's first template when empty. */
+      template?: string;
+      attachField?: string;
+      emailFields?: string[];
+      emailTo?: string[];
+      subject?: string;
+      message?: string;
+    };
 
 export interface AutomationDef {
   key: string;

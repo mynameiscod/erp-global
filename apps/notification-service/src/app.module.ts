@@ -9,11 +9,12 @@ import {
   subjectFor,
   type EmailRequestedPayload,
   type EventEnvelope,
+  type MailSendPayload,
   type WhatsappRequestedPayload,
 } from '@erp/contracts';
 import { alreadyProcessed, handleOnce, type EventBus } from '@erp/events';
 import { EVENT_BUS, MONGO_CONNECTION, ServiceCoreModule, TENANT_DATABASES } from '@erp/service-kit';
-import { tenantPlugin, type ModelDef, type TenantDatabases } from '@erp/tenancy';
+import { runAsTenant, tenantPlugin, type ModelDef, type TenantDatabases } from '@erp/tenancy';
 import { CLIENTS, createClients, type Clients } from './clients';
 import { InboxController } from './inbox.controller';
 import { InboxModel, PreferenceModel, PushModel, SentModel } from './inbox.models';
@@ -90,6 +91,62 @@ export class EmailSender {
   }
 }
 
+const MAIL_CONSUMER = 'notification-service-mail';
+
+/** Composed emails with attachments: documents and scheduled reports. */
+@Injectable()
+export class MailSender {
+  constructor(
+    @Inject(MAILER) private readonly mailer: Mailer,
+    @Inject(TENANT_DATABASES) private readonly dbs: TenantDatabases,
+    @Inject(MONGO_CONNECTION) private readonly conn: Connection,
+    @Inject(CLIENTS) private readonly clients: Clients,
+  ) {}
+
+  async handle(event: EventEnvelope): Promise<void> {
+    if (await alreadyProcessed(this.conn, MAIL_CONSUMER, event.eventId)) return;
+    const p = event.payload as MailSendPayload;
+    const attachments = await runAsTenant(
+      event.tenantId,
+      { type: 'system', id: 'notification-service' },
+      () =>
+        Promise.all(
+          p.attachments.map(async (a) => {
+            if (!this.clients.files) throw new Error('FILE_SERVICE_URL is not configured');
+            const { bytes, contentType } = await this.clients.files.getBytes(
+              `/internal/files/${encodeURIComponent(a.fileId)}/bytes`,
+              { timeoutMs: 30_000 },
+            );
+            return { filename: a.name, content: bytes, contentType };
+          }),
+        ),
+    );
+    const { messageId } = await this.mailer.send({
+      to: p.to,
+      subject: p.subject,
+      text: p.text,
+      html: p.html,
+      attachments,
+    });
+    await handleOnce(this.conn, MAIL_CONSUMER, event, async (session) => {
+      const Deliveries = await this.dbs.model(DeliveryModel);
+      await Deliveries.create(
+        [
+          {
+            eventId: event.eventId,
+            channel: 'email',
+            to: p.to.join(', ').slice(0, 500),
+            template: 'mail',
+            status: 'sent',
+            messageId,
+          },
+        ],
+        { session },
+      );
+    });
+  }
+}
+
 const WHATSAPP_CONSUMER = 'notification-service-whatsapp';
 
 @Injectable()
@@ -141,6 +198,7 @@ export class WhatsappSenderService {
   controllers: [InboxController],
   providers: [
     EmailSender,
+    MailSender,
     WhatsappSenderService,
     UserNotifier,
     LiveHub,
@@ -155,6 +213,7 @@ export class AppModule implements OnApplicationBootstrap {
     @Inject(EVENT_BUS) private readonly bus: EventBus,
     @Inject(MONGO_CONNECTION) private readonly conn: Connection,
     private readonly sender: EmailSender,
+    private readonly mail: MailSender,
     private readonly whatsapp: WhatsappSenderService,
     private readonly notifier: UserNotifier,
     @Inject(CLIENTS) private readonly clients: Clients,
@@ -170,6 +229,12 @@ export class AppModule implements OnApplicationBootstrap {
       stream: NOTIFY_STREAM,
       subjects: [NotifyTypes.EmailRequested],
       handler: (event) => this.sender.handle(event),
+    });
+    await this.bus.subscribe({
+      durable: MAIL_CONSUMER,
+      stream: NOTIFY_STREAM,
+      subjects: [NotifyTypes.MailSend],
+      handler: (event) => this.mail.handle(event),
     });
     await this.bus.subscribe({
       durable: WHATSAPP_CONSUMER,

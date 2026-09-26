@@ -5,3 +5,5 @@ export const MONGO_CONNECTION = Symbol('MONGO_CONNECTION');
 export const TENANT_DATABASES = Symbol('TENANT_DATABASES');
 export const PLACEMENT_RESOLVER = Symbol('PLACEMENT_RESOLVER');
 export const EVENT_BUS = Symbol('EVENT_BUS');
+/** Largest request body a service accepts (JSON, form or raw bytes), e.g. `1mb`. */
+export const BODY_LIMIT = Symbol('BODY_LIMIT');

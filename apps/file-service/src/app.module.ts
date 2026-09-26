@@ -5,7 +5,7 @@ import { FILE_ENV, FilesService, loadFileEnv, type FileEnv } from './files.servi
 import { FILE_STORAGE, MemoryStorage, S3Storage, type FileStorage } from './storage';
 
 @Module({
-  imports: [ServiceCoreModule.forRoot({ name: 'file-service' })],
+  imports: [ServiceCoreModule.forRoot({ name: 'file-service', bodyLimit: '30mb' })],
   controllers: [FilesController, InternalFilesController],
   providers: [
     FilesService,

@@ -309,6 +309,17 @@ export const automationSchema = z
             })
             .strict(),
           z.object({ type: z.literal('workflow_action'), action: keySchema }).strict(),
+          z
+            .object({
+              type: z.literal('document'),
+              template: keySchema.optional(),
+              attachField: keySchema.optional(),
+              emailFields: z.array(keySchema).max(10).optional(),
+              emailTo: z.array(z.string().email().max(254)).max(20).optional(),
+              subject: z.string().trim().max(200).optional(),
+              message: z.string().trim().max(4000).optional(),
+            })
+            .strict(),
         ]),
       )
       .min(1)
