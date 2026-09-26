@@ -56,7 +56,10 @@ export type ConfigKind =
   | 'workflows'
   | 'rules'
   | 'automations'
-  | 'templates';
+  | 'templates'
+  | 'print-templates'
+  | 'reports'
+  | 'dashboards';
 
 /** Published configuration for the current user, optionally at an org unit or as a draft preview. */
 export function useEffectiveConfig(

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Alert, Button, Col, Form, Modal, Row } from 'react-bootstrap';
+import { Alert, Button, Card, Col, Form, InputGroup, Modal, Row } from 'react-bootstrap';
 import { useTranslation } from 'react-i18next';
 import {
   compileFormula,
@@ -8,6 +8,7 @@ import {
   KEY_RE,
   mergeLayers,
   platformBaseLayer,
+  TABLE_COLUMN_TYPES,
   type FieldDef,
   type FieldType,
   type LocalizedText,
@@ -28,7 +29,14 @@ const COMPATIBLE: Partial<Record<FieldType, FieldType[]>> = {
   select: ['multiselect'],
   image: ['file'],
 };
-const NOT_ON_SYSTEM = new Set<FieldType>(['lookup', 'lookup_many', 'file', 'image', 'autonumber']);
+const NOT_ON_SYSTEM = new Set<FieldType>([
+  'lookup',
+  'lookup_many',
+  'file',
+  'image',
+  'autonumber',
+  'table',
+]);
 
 const num = (v: string) => (v === '' ? undefined : Number(v));
 
@@ -75,7 +83,10 @@ export function FieldDialog({
   const formulaError = useMemo(() => {
     if (f.type !== 'formula' || !f.formula) return undefined;
     try {
-      const deps = compileFormula(f.formula).fields.filter((d) => !existingKeys.includes(d));
+      // Table columns (`lines.amount`) count by their table field.
+      const deps = compileFormula(f.formula).fields.filter(
+        (d) => !existingKeys.includes(d.split('.')[0]),
+      );
       return deps.length ? `Unknown field: ${deps.join(', ')}` : undefined;
     } catch (e) {
       return e instanceof FormulaError ? e.message : 'Invalid formula';
@@ -105,11 +116,12 @@ export function FieldDialog({
     if (f.type === 'formula') keep('formula', 'resultType');
     if (f.type === 'autonumber') keep('numbering');
     if (['file', 'image'].includes(f.type)) keep('accept', 'maxSizeMb');
+    if (f.type === 'table') keep('columns', 'maxRows');
     await onSave(clean, field?.key);
     setSaving(false);
   };
 
-  const n = (k: 'min' | 'max' | 'scale' | 'maxLength' | 'minLength' | 'maxSizeMb') => (
+  const n = (k: 'min' | 'max' | 'scale' | 'maxLength' | 'minLength' | 'maxSizeMb' | 'maxRows') => (
     <Field label={t(`studio.${k === 'maxSizeMb' ? 'maxSize' : k}`)} controlId={`fd-${k}`}>
       <Form.Control
         type="number"
@@ -381,6 +393,18 @@ export function FieldDialog({
               )}
             </>
           )}
+          {f.type === 'table' && (
+            <Col xs={12}>
+              <ColumnsEditor
+                columns={f.columns ?? []}
+                onChange={(columns) => set({ columns })}
+                picklists={merged.picklists}
+                entities={merged.entities.filter((e) => !e.archived && e.key !== entityKey)}
+                published={published}
+              />
+              <Col md={4}>{n('maxRows')}</Col>
+            </Col>
+          )}
           <Col xs={12}>
             <Field label={`${t('studio.help')} (${t('common.optional')})`} controlId="fd-help">
               <LocalizedInput
@@ -398,7 +422,13 @@ export function FieldDialog({
         </Button>
         <Button
           onClick={() => void submit()}
-          disabled={saving || !keyOk || !Object.values(f.label).some(Boolean) || !!formulaError}
+          disabled={
+            saving ||
+            !keyOk ||
+            !Object.values(f.label).some(Boolean) ||
+            !!formulaError ||
+            (f.type === 'table' && !(f.columns ?? []).length)
+          }
         >
           {t('common.save')}
         </Button>
@@ -414,4 +444,165 @@ function slug(s: string): string {
     .replace(/^_+|_+$/g, '')
     .slice(0, 40);
   return /^[a-z]/.test(k) ? k : k ? `f_${k}`.slice(0, 40) : '';
+}
+
+/** Columns of a table field (line items): each a simple field of its own. */
+function ColumnsEditor({
+  columns,
+  onChange,
+  picklists,
+  entities,
+  published,
+}: {
+  columns: FieldDef[];
+  onChange: (c: FieldDef[]) => void;
+  picklists: { key: string; label: LocalizedText }[];
+  entities: { key: string; label?: LocalizedText }[];
+  published: boolean;
+}) {
+  const { t } = useTranslation();
+  const label = useLabel();
+  const setCol = (i: number, patch: Partial<FieldDef>) =>
+    onChange(columns.map((c, j) => (j === i ? { ...c, ...patch } : c)));
+  const keys = columns.map((c) => c.key);
+  return (
+    <Card body className="mb-3">
+      <div className="fw-semibold mb-1">{t('studio.columns')}</div>
+      <p className="small text-body-secondary">{t('studio.columnsHelp')}</p>
+      {columns.map((c, i) => (
+        <Row key={i} className="g-2 mb-2 align-items-start border-bottom pb-2">
+          <Col md={3}>
+            <LocalizedInput
+              id={`col-label-${i}`}
+              value={c.label}
+              onChange={(v) =>
+                setCol(i, {
+                  label: v,
+                  ...(!c.key || c.key === slug(label(c.label))
+                    ? { key: slug(v.en ?? Object.values(v)[0] ?? '') }
+                    : {}),
+                })
+              }
+            />
+          </Col>
+          <Col md={2}>
+            <Form.Control
+              size="sm"
+              className="font-monospace"
+              dir="ltr"
+              placeholder={t('studio.fieldKey')}
+              value={c.key}
+              isInvalid={!!c.key && (!KEY_RE.test(c.key) || keys.indexOf(c.key) !== i)}
+              onChange={(e) => setCol(i, { key: e.target.value.toLowerCase() })}
+            />
+          </Col>
+          <Col md={2}>
+            <Form.Select
+              size="sm"
+              value={c.type}
+              onChange={(e) => setCol(i, { type: e.target.value as FieldType })}
+            >
+              {TABLE_COLUMN_TYPES.map((ty) => (
+                <option key={ty} value={ty}>
+                  {t(`fieldTypes.${ty}`)}
+                </option>
+              ))}
+            </Form.Select>
+          </Col>
+          <Col md={4}>
+            {c.type === 'select' && (
+              <Form.Select
+                size="sm"
+                value={c.picklist ?? ''}
+                onChange={(e) => setCol(i, { picklist: e.target.value || undefined })}
+              >
+                <option value="">{t('studio.picklist')}</option>
+                {picklists.map((p) => (
+                  <option key={p.key} value={p.key}>
+                    {label(p.label)}
+                  </option>
+                ))}
+              </Form.Select>
+            )}
+            {c.type === 'lookup' && (
+              <Form.Select
+                size="sm"
+                value={c.target ?? ''}
+                onChange={(e) => setCol(i, { target: e.target.value || undefined })}
+              >
+                <option value="">{t('studio.target')}</option>
+                {entities.map((e) => (
+                  <option key={e.key} value={e.key}>
+                    {label(e.label) || e.key}
+                  </option>
+                ))}
+              </Form.Select>
+            )}
+            {c.type === 'formula' && (
+              <InputGroup size="sm">
+                <Form.Control
+                  dir="ltr"
+                  className="font-monospace"
+                  placeholder="qty * rate"
+                  value={c.formula ?? ''}
+                  onChange={(e) =>
+                    setCol(i, { formula: e.target.value, resultType: c.resultType ?? 'number' })
+                  }
+                />
+                <Form.Select
+                  style={{ maxWidth: 110 }}
+                  value={c.resultType ?? 'number'}
+                  onChange={(e) =>
+                    setCol(i, { resultType: e.target.value as FieldDef['resultType'] })
+                  }
+                >
+                  <option value="number">{t('fieldTypes.decimal')}</option>
+                  <option value="text">{t('fieldTypes.text')}</option>
+                </Form.Select>
+              </InputGroup>
+            )}
+            {c.type === 'currency' && (
+              <Form.Control
+                size="sm"
+                dir="ltr"
+                maxLength={3}
+                placeholder={t('studio.currencyHint')}
+                value={c.currency ?? ''}
+                onChange={(e) => setCol(i, { currency: e.target.value.toUpperCase() || undefined })}
+              />
+            )}
+            {c.type !== 'formula' && (
+              <Form.Check
+                type="switch"
+                id={`col-req-${i}`}
+                label={t('studio.required')}
+                checked={!!c.required}
+                onChange={(e) => setCol(i, { required: e.target.checked || undefined })}
+              />
+            )}
+          </Col>
+          <Col md={1} className="text-end">
+            {!published && (
+              <Button
+                size="sm"
+                variant="outline-danger"
+                onClick={() => onChange(columns.filter((_, j) => j !== i))}
+                aria-label={t('common.delete')}
+              >
+                <i className="bi bi-x" />
+              </Button>
+            )}
+          </Col>
+        </Row>
+      ))}
+      <Button
+        size="sm"
+        variant="outline-primary"
+        onClick={() => onChange([...columns, { key: '', type: 'text', label: {} }])}
+      >
+        <i className="bi bi-plus me-1" />
+        {t('studio.addColumn')}
+      </Button>
+    </Card>
+  );
 }

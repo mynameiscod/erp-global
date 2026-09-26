@@ -27,6 +27,8 @@ export interface DataGridProps<T> {
   loading?: boolean;
   quickFilter?: string;
   height?: number;
+  /** Rows can be ticked; called with the ticked rows. */
+  onSelect?: (rows: T[]) => void;
 }
 
 /** AG Grid with the app theme, RTL support and sensible defaults. */
@@ -37,6 +39,7 @@ export function DataGrid<T>({
   loading,
   quickFilter,
   height = 520,
+  onSelect,
 }: DataGridProps<T>) {
   const { i18n } = useTranslation();
   const defaultColDef = useMemo<ColDef<T>>(
@@ -58,6 +61,8 @@ export function DataGrid<T>({
         paginationPageSize={50}
         paginationPageSizeSelector={[25, 50, 100, 200]}
         animateRows
+        rowSelection={onSelect ? { mode: 'multiRow' } : undefined}
+        onSelectionChanged={onSelect ? (e) => onSelect(e.api.getSelectedRows()) : undefined}
       />
     </div>
   );

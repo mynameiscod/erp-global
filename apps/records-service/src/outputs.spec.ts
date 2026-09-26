@@ -411,6 +411,26 @@ describe('records-service reports and document data', () => {
     expect(drilled.body.rows.map((r: { c0: string }) => r.c0)).toEqual(['B-2']);
   });
 
+  it('lists the records behind a group for drill-down', async () => {
+    const res = await run(
+      {
+        groupBy: [{ path: 'mode' }],
+        aggregates: [{ fn: 'sum', path: 'total' }],
+        dateField: 'invoice_date',
+      },
+      full,
+      { records: true, drill: [{ path: 'mode', value: 'upi' }] },
+    ).expect(200);
+    expect(res.body.kind).toBe('rows');
+    expect(res.body.columns.map((c: { label: string }) => c.label)).toEqual([
+      'Number',
+      'Ref',
+      'Date',
+      'Total',
+    ]);
+    expect(res.body.rows.map((r: { c1: string }) => r.c1).sort()).toEqual(['B-1', 'H-2']);
+  });
+
   it('makes the same date buckets as the metadata package', async () => {
     const dates = ['2026-01-01', '2026-03-31', '2026-04-01', '2026-12-31', '2027-01-03'];
     for (const [i, d] of dates.entries()) {

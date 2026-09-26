@@ -89,6 +89,20 @@ export const BUILTIN_TEMPLATES: MessageTemplate[] = [
       ar: 'لديك {{count}} طلبات بانتظار موافقتك.',
     },
   },
+  {
+    key: 'report.ready',
+    label: { en: 'Report export ready' },
+    title: {
+      en: 'Your export is ready: {{report}}',
+      hi: 'आपका निर्यात तैयार है: {{report}}',
+      ar: 'التصدير جاهز: {{report}}',
+    },
+    body: {
+      en: '{{report}} ({{format}}, {{rows}} rows) is ready to download.',
+      hi: '{{report}} ({{format}}, {{rows}} पंक्तियाँ) डाउनलोड के लिए तैयार है।',
+      ar: '{{report}} ({{format}}، {{rows}} صفوف) جاهز للتنزيل.',
+    },
+  },
 ];
 
 export const BUILTIN_TEMPLATE_KEYS = BUILTIN_TEMPLATES.map((t) => t.key);

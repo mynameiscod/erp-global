@@ -41,6 +41,7 @@ const ACTIONS: AutomationAction['type'][] = [
   'create',
   'webhook',
   'workflow_action',
+  'document',
 ];
 const RECIPIENTS = ['creator', 'manager', 'field', 'role', 'users'] as const;
 
@@ -61,6 +62,8 @@ function blankAction(type: AutomationAction['type'], entity: string): Automation
       return { type, url: 'https://' };
     case 'workflow_action':
       return { type, action: '' };
+    case 'document':
+      return { type };
   }
 }
 
@@ -368,6 +371,81 @@ function AutomationDialog({
                   />
                   <Form.Text muted>{t('automation.webhookHelp')}</Form.Text>
                 </>
+              )}
+              {act.type === 'document' && (
+                <Row className="g-2">
+                  <Col md={6}>
+                    <Form.Label className="small">{t('automation.printTemplate')}</Form.Label>
+                    <Form.Select
+                      size="sm"
+                      value={act.template ?? ''}
+                      onChange={(e) =>
+                        setAction(i, { ...act, template: e.target.value || undefined })
+                      }
+                    >
+                      <option value="">{t('automation.firstTemplate')}</option>
+                      {(cfg.data?.printTemplates ?? [])
+                        .filter((p) => p.entity === a.entity)
+                        .map((p) => (
+                          <option key={p.key} value={p.key}>
+                            {label(p.label)}
+                          </option>
+                        ))}
+                    </Form.Select>
+                  </Col>
+                  <Col md={6}>
+                    <Form.Label className="small">{t('automation.attachTo')}</Form.Label>
+                    <Form.Select
+                      size="sm"
+                      value={act.attachField ?? ''}
+                      onChange={(e) =>
+                        setAction(i, { ...act, attachField: e.target.value || undefined })
+                      }
+                    >
+                      <option value="">{t('common.none')}</option>
+                      {entity?.fields
+                        .filter((f) => f.type === 'file')
+                        .map((f) => (
+                          <option key={f.key} value={f.key}>
+                            {label(f.label)}
+                          </option>
+                        ))}
+                    </Form.Select>
+                  </Col>
+                  <Col md={6}>
+                    <Form.Label className="small">{t('automation.emailFields')}</Form.Label>
+                    <ChecklistInput<string>
+                      id={`au-ef-${i}`}
+                      options={(entity?.fields ?? [])
+                        .filter((f) => f.type === 'email')
+                        .map((f) => f.key)}
+                      value={act.emailFields ?? []}
+                      labelOf={(k) => label(entity?.fields.find((f) => f.key === k)?.label)}
+                      onChange={(emailFields) =>
+                        setAction(i, {
+                          ...act,
+                          emailFields: emailFields.length ? emailFields : undefined,
+                        })
+                      }
+                    />
+                  </Col>
+                  <Col md={6}>
+                    <Form.Label className="small">{t('automation.emailTo')}</Form.Label>
+                    <Form.Control
+                      size="sm"
+                      dir="ltr"
+                      placeholder="accounts@example.com"
+                      value={(act.emailTo ?? []).join(', ')}
+                      onChange={(e) => {
+                        const list = e.target.value.split(/[\s,;]+/).filter(Boolean);
+                        setAction(i, { ...act, emailTo: list.length ? list : undefined });
+                      }}
+                    />
+                  </Col>
+                  <Col md={12}>
+                    <Form.Text muted>{t('automation.documentHelp')}</Form.Text>
+                  </Col>
+                </Row>
               )}
               {act.type === 'workflow_action' && (
                 <Form.Select

@@ -18,6 +18,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useEffectiveConfig, useLabel } from '../config/hooks';
 import { ErrorAlert, Loading, PageHeader } from '../components/ui';
 import { DynamicFields, editableValues, type Values } from './DynamicFields';
+import { PrintMenu } from './PrintMenu';
 import type { RecordDto } from './RecordsListPage';
 import { WorkflowPanel } from './WorkflowPanel';
 
@@ -215,10 +216,21 @@ export function RecordFormPage() {
         title={title}
         subtitle={record.data?.number ?? undefined}
         actions={
-          <Button variant="outline-secondary" onClick={() => navigate(`/r/${key}`)}>
-            <i className="bi bi-arrow-left me-1 flip-rtl" />
-            {label(entity.pluralLabel)}
-          </Button>
+          <>
+            {!isNew && id && (
+              <PrintMenu
+                entity={key}
+                ids={[id]}
+                templates={effective.printTemplates.filter(
+                  (p) => p.entity === key && p.active !== false,
+                )}
+              />
+            )}
+            <Button variant="outline-secondary" onClick={() => navigate(`/r/${key}`)}>
+              <i className="bi bi-arrow-left me-1 flip-rtl" />
+              {label(entity.pluralLabel)}
+            </Button>
+          </>
         }
       />
       {saved && <Alert variant="success">{t('records.saved')}</Alert>}

@@ -83,7 +83,7 @@ export function DynamicFields({
                 const f = fields.get(key)!;
                 const id = `${idPrefix}-${key}`;
                 return (
-                  <Col md={12 / s.columns} key={key}>
+                  <Col md={f.type === 'table' ? 12 : 12 / s.columns} key={key}>
                     <Form.Group className="mb-3" controlId={id}>
                       <Form.Label>
                         {label(f.label)}

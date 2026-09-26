@@ -20,6 +20,7 @@ import { DataGrid } from '../components/DataGrid';
 import { ErrorAlert, Loading, PageHeader } from '../components/ui';
 import { formatDateTime } from '../lib/format';
 import { displayValue } from './display';
+import { PrintMenu } from './PrintMenu';
 
 export interface RecordDto {
   id: string;
@@ -98,6 +99,10 @@ export function RecordsListPage() {
   const view = cfg.data?.listViews.find((v) => v.entity === key);
   const workflow = cfg.data ? workflowFor(cfg.data, key) : undefined;
   const [status, setStatus] = useState('');
+  const [selected, setSelected] = useState<string[]>([]);
+  const templates = (cfg.data?.printTemplates ?? []).filter(
+    (p) => p.entity === key && p.active !== false,
+  );
   const rows = useQuery({
     queryKey: ['records', key, search, view?.sort?.field, view?.sort?.dir, status],
     enabled: !!entity,
@@ -196,12 +201,15 @@ export function RecordsListPage() {
       <PageHeader
         title={label(entity.pluralLabel)}
         actions={
-          can(recordPermission(key, 'create')) && (
-            <Link className="btn btn-primary" to={`/r/${key}/new`}>
-              <i className="bi bi-plus-lg me-1" />
-              {t('records.new', { name: label(entity.label) })}
-            </Link>
-          )
+          <>
+            {selected.length > 0 && <PrintMenu entity={key} ids={selected} templates={templates} />}
+            {can(recordPermission(key, 'create')) && (
+              <Link className="btn btn-primary" to={`/r/${key}/new`}>
+                <i className="bi bi-plus-lg me-1" />
+                {t('records.new', { name: label(entity.label) })}
+              </Link>
+            )}
+          </>
         }
       />
       <ErrorAlert error={rows.error} />
@@ -259,6 +267,7 @@ export function RecordsListPage() {
             ]}
             rowId={(r) => r.id}
             loading={rows.isLoading}
+            onSelect={templates.length ? (list) => setSelected(list.map((r) => r.id)) : undefined}
           />
         </div>
       )}

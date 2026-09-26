@@ -50,6 +50,8 @@ export function displayValue(f: FieldDef | undefined, v: unknown, ctx: DisplayCo
     case 'file':
     case 'image':
       return '📎';
+    case 'table':
+      return Array.isArray(v) ? `▦ ${v.length}` : '';
     default:
       return String(v);
   }

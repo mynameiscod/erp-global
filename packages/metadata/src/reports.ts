@@ -181,6 +181,8 @@ export const reportRunParamsSchema = z
       .array(z.object({ path: pathSchema, bucket: z.enum(DATE_BUCKETS).optional(), value: scalar }))
       .max(4)
       .optional(),
+    /** Drill-down: list the records behind the numbers instead of the groups. */
+    records: z.boolean().optional(),
     page: z.number().int().min(1).max(10_000).optional(),
     pageSize: z.number().int().min(1).max(5_000).optional(),
   })

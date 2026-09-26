@@ -122,6 +122,12 @@ export class InternalAccessController {
     return this.access.roleHolders(q.roleId, q.path);
   }
 
+  /** Everyone who holds a role anywhere (scheduled report recipients). */
+  @Get('roles/:roleId/holders')
+  allHolders(@Param('roleId') roleId: string) {
+    return this.access.allRoleHolders(roleId);
+  }
+
   @Get('users/:userId/acl')
   acl(@Param('userId') userId: string) {
     return this.access.aclFor(userId);

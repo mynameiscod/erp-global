@@ -59,6 +59,8 @@ services:
       MONGO_PASSWORD_AUDIT: ${MONGO_PASSWORD_AUDIT}
       MONGO_PASSWORD_REFERENCE: ${MONGO_PASSWORD_REFERENCE}
       MONGO_PASSWORD_WORKFLOW: ${MONGO_PASSWORD_WORKFLOW}
+      MONGO_PASSWORD_DOCUMENT: ${MONGO_PASSWORD_DOCUMENT}
+      MONGO_PASSWORD_REPORTING: ${MONGO_PASSWORD_REPORTING}
       MONGO_PASSWORD_NOTIFICATION: ${MONGO_PASSWORD_NOTIFICATION}
       MONGO_PASSWORD_CONFIG: ${MONGO_PASSWORD_CONFIG}
       MONGO_PASSWORD_RECORDS: ${MONGO_PASSWORD_RECORDS}
@@ -256,6 +258,7 @@ services:
       WHATSAPP_TEMPLATE_LANGUAGES: ${WHATSAPP_TEMPLATE_LANGUAGES:-en_US}
       IDENTITY_SERVICE_URL: http://identity-service:3001
       CONFIG_SERVICE_URL: http://config-service:3008
+      FILE_SERVICE_URL: http://file-service:3010
       APP_URL: ${APP_URL}
       # Web push (optional): VAPID keys from gen-env.
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
@@ -275,6 +278,40 @@ services:
       ACCESS_SERVICE_URL: http://access-service:3004
       IDENTITY_SERVICE_URL: http://identity-service:3001
       ORG_SERVICE_URL: http://org-service:3003
+      DOCUMENT_SERVICE_URL: http://document-service:3012
+
+  # PDFs: headless Chromium with bundled fonts. Needs about 300-500 MB of memory.
+  document-service:
+    <<: *service
+    build: { <<: *build, target: runtime-chromium, args: { APP: document-service } }
+    shm_size: 256mb
+    environment:
+      <<: *service-env
+      PORT: 3012
+      MONGO_URI: mongodb://svc_document:${MONGO_PASSWORD_DOCUMENT}@mongo:27017/?replicaSet=rs0&authSource=admin
+      MONGO_DB: erp_document
+      CHROMIUM_PATH: /usr/bin/chromium
+      RENDER_CONCURRENCY: ${RENDER_CONCURRENCY:-2}
+      CONFIG_SERVICE_URL: http://config-service:3008
+      RECORDS_SERVICE_URL: http://records-service:3009
+      FILE_SERVICE_URL: http://file-service:3010
+      ORG_SERVICE_URL: http://org-service:3003
+      IDENTITY_SERVICE_URL: http://identity-service:3001
+
+  reporting-service:
+    <<: *service
+    build: { <<: *build, args: { APP: reporting-service } }
+    environment:
+      <<: *service-env
+      PORT: 3013
+      MONGO_URI: mongodb://svc_reporting:${MONGO_PASSWORD_REPORTING}@mongo:27017/?replicaSet=rs0&authSource=admin
+      MONGO_DB: erp_reporting
+      CONFIG_SERVICE_URL: http://config-service:3008
+      RECORDS_SERVICE_URL: http://records-service:3009
+      ACCESS_SERVICE_URL: http://access-service:3004
+      IDENTITY_SERVICE_URL: http://identity-service:3001
+      FILE_SERVICE_URL: http://file-service:3010
+      DOCUMENT_SERVICE_URL: http://document-service:3012
 
   api-gateway:
     restart: unless-stopped
@@ -293,6 +330,8 @@ services:
         file-service,
         workflow-service,
         notification-service,
+        document-service,
+        reporting-service,
         redis,
       ]
     environment:
@@ -314,6 +353,8 @@ services:
       FILE_SERVICE_URL: http://file-service:3010
       WORKFLOW_SERVICE_URL: http://workflow-service:3011
       NOTIFICATION_SERVICE_URL: http://notification-service:3007
+      DOCUMENT_SERVICE_URL: http://document-service:3012
+      REPORTING_SERVICE_URL: http://reporting-service:3013
 
   web:
     restart: unless-stopped

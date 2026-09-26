@@ -416,6 +416,12 @@ export class AccessService {
    * Holders of a role at the unit with `path` or, if nobody there has it, at the nearest
    * unit above. Returns the users of the first level that has any.
    */
+  async allRoleHolders(roleId: string): Promise<{ userIds: string[] }> {
+    if (!/^[a-f0-9]{24}$/.test(roleId)) return { userIds: [] };
+    const all = await (await this.assignments()).find({ roleId }).lean();
+    return { userIds: [...new Set(all.map((a) => a.userId))] };
+  }
+
   async roleHolders(roleId: string, path?: string) {
     if (!path) {
       // Company-wide records: the holders nearest the top of the org tree.

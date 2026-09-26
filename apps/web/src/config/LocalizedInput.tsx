@@ -8,34 +8,48 @@ import type { LocalizedText } from '@erp/metadata';
  * Edits one text in several languages. The first language is always shown;
  * the others expand on request, so simple setups stay simple.
  */
+const RTL = new Set(['ar', 'he', 'fa', 'ur']);
+
 export function LocalizedInput({
   value,
   onChange,
   id,
   invalid,
+  extra,
+  multiline,
 }: {
   value: LocalizedText | undefined;
   onChange: (v: LocalizedText) => void;
   id: string;
   invalid?: boolean;
+  /** More languages than the app's own, e.g. those a print template uses (te, ta…). */
+  extra?: string[];
+  multiline?: boolean;
 }) {
   const { t, i18n } = useTranslation();
   const [open, setOpen] = useState(() => Object.keys(value ?? {}).length > 1);
-  const primary = UI_LANGUAGES.find((l) => l.code === i18n.language) ?? UI_LANGUAGES[0];
-  const others = UI_LANGUAGES.filter((l) => l.code !== primary.code);
+  const languages: { code: string; dir: string }[] = [
+    ...UI_LANGUAGES,
+    ...(extra ?? [])
+      .filter((c) => !UI_LANGUAGES.some((l) => l.code === c))
+      .map((code) => ({ code, dir: RTL.has(code.split('-')[0]) ? 'rtl' : 'ltr' })),
+  ];
+  const primary = languages.find((l) => l.code === i18n.language) ?? languages[0];
+  const others = languages.filter((l) => l.code !== primary.code);
   const set = (lang: string, text: string) => {
     const next = { ...(value ?? {}) };
     if (text) next[lang] = text;
     else delete next[lang];
     onChange(next);
   };
-  const row = (l: (typeof UI_LANGUAGES)[number], first: boolean) => (
+  const row = (l: { code: string; dir: string }, first: boolean) => (
     <InputGroup key={l.code} className={first ? '' : 'mt-1'} size={first ? undefined : 'sm'}>
       <InputGroup.Text style={{ minWidth: 48 }} className="justify-content-center">
         {l.code.toUpperCase()}
       </InputGroup.Text>
       <Form.Control
         id={first ? id : `${id}-${l.code}`}
+        {...(multiline ? { as: 'textarea' as const, rows: 2 } : {})}
         dir={l.dir}
         lang={l.code}
         value={value?.[l.code] ?? ''}

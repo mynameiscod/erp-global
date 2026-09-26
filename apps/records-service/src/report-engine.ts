@@ -113,7 +113,8 @@ export class ReportEngine {
     @Inject(CLIENTS) private readonly clients: Clients,
   ) {}
 
-  async run(req: RunRequest): Promise<ReportResult> {
+  async run(input: RunRequest): Promise<ReportResult> {
+    let req = input;
     const cfg = await this.clients.config.effective();
     const report = req.report;
     const entity = findEntity(cfg, report.entity);
@@ -126,12 +127,39 @@ export class ReportEngine {
         issues.map((i) => ({ path: i.path, message: i.message })),
       );
     }
+    if (req.params.records) {
+      // The records behind a group: the report's columns, or its number, title, date and totals.
+      const defaults = [
+        'number',
+        ...(entity.titleField ? [entity.titleField] : []),
+        ...(report.dateField ? [report.dateField] : []),
+        ...[...(report.aggregates ?? []), ...(report.pivot?.values ?? [])].flatMap((a) =>
+          a.path ? [a.path] : [],
+        ),
+      ];
+      req = {
+        ...req,
+        report: {
+          ...report,
+          groupBy: undefined,
+          pivot: undefined,
+          aggregates: undefined,
+          chart: undefined,
+          columns: report.columns.length
+            ? report.columns
+            : [...new Set(defaults)].map((path) => ({ path })),
+        },
+      };
+    }
     const ctx = new RunContext(cfg, req, this.clients);
     const Records = await this.dbs.model(RecordModel);
     const base = await ctx.baseMatch(entity.orgScoped !== false);
+    const def = req.report;
 
-    if (report.pivot) return ctx.pivot(Records, base);
-    if (report.groupBy?.length) return ctx.groups(Records, base);
+    if (def.pivot) return ctx.pivot(Records, base);
+    // Totals without columns (a KPI) are a grouped report with no groups: the grand total.
+    if (def.groupBy?.length || (def.aggregates?.length && !def.columns.length))
+      return ctx.groups(Records, base);
     return ctx.rows(Records, base);
   }
 }
@@ -602,7 +630,7 @@ class RunContext {
   }
 
   async groups(Records: Model<RecordDoc>, base: Record<string, unknown>): Promise<ReportResult> {
-    const groups = this.report.groupBy!;
+    const groups = this.report.groupBy ?? [];
     const aggregates = this.report.aggregates ?? [];
     const stages = this.matchStages(base, [
       ...groups.map((g) => g.path),
@@ -632,7 +660,7 @@ class RunContext {
       labels: {},
       values: this.values(doc, aggregates),
     });
-    const leaves = levels[levels.length - 1];
+    const leaves = levels[levels.length - 1] ?? [];
     const truncated = leaves.length > MAX_GROUPS;
     const rows = leaves.slice(0, MAX_GROUPS).map((d) => toRow(d, 0));
     const subtotals = levels

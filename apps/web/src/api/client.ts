@@ -142,3 +142,57 @@ export async function api<T>(path: string, opts: RequestOptions = {}, retried = 
   }
   return json as T;
 }
+
+/** A file from the API (a PDF), with its name from Content-Disposition. */
+export async function apiBlob(
+  path: string,
+  opts: { method?: string; body?: unknown } = {},
+  retried = false,
+): Promise<{ blob: Blob; fileName: string }> {
+  const headers: Record<string, string> = { 'accept-language': language };
+  if (accessToken) headers.authorization = `Bearer ${accessToken}`;
+  if (opts.body !== undefined) headers['content-type'] = 'application/json';
+  let res: Response;
+  try {
+    res = await fetch(`/api/v1${path}`, {
+      method: opts.method ?? 'GET',
+      headers,
+      credentials: 'same-origin',
+      body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+    });
+  } catch {
+    throw new ApiError(0, 'NETWORK_ERROR', 'Cannot reach the server. Check your connection.');
+  }
+  if (res.status === 401 && !retried && (await refreshOnce())) return apiBlob(path, opts, true);
+  if (!res.ok) {
+    const json = (await res.json().catch(() => undefined)) as ErrorBody | undefined;
+    throw new ApiError(
+      res.status,
+      json?.error?.code ?? 'ERROR',
+      json?.error?.message ?? res.statusText,
+      json?.error?.details,
+    );
+  }
+  const disposition = res.headers.get('content-disposition') ?? '';
+  const m = /filename\*=UTF-8''([^;]+)/.exec(disposition);
+  return { blob: await res.blob(), fileName: m ? decodeURIComponent(m[1]) : 'document.pdf' };
+}
+
+/** Saves a blob as a file in the browser. */
+export function saveBlob(blob: Blob, fileName: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/** Opens a blob (a PDF) in a new tab, where the browser can print it. */
+export function openBlob(blob: Blob): void {
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank', 'noopener');
+  setTimeout(() => URL.revokeObjectURL(url), 5 * 60_000);
+}

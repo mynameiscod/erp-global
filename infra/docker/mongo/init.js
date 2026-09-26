@@ -12,6 +12,8 @@ const services = [
   'records',
   'files',
   'workflow',
+  'document',
+  'reporting',
 ];
 
 try {

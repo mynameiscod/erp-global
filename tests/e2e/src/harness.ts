@@ -17,6 +17,8 @@ import { AppModule as ConfigModule } from '../../../apps/config-service/src/app.
 import { AppModule as RecordsModule } from '../../../apps/records-service/src/app.module';
 import { AppModule as FileModule } from '../../../apps/file-service/src/app.module';
 import { AppModule as WorkflowModule } from '../../../apps/workflow-service/src/app.module';
+import { AppModule as DocumentModule } from '../../../apps/document-service/src/app.module';
+import { AppModule as ReportingModule } from '../../../apps/reporting-service/src/app.module';
 
 const SERVICES = [
   'identity',
@@ -30,6 +32,8 @@ const SERVICES = [
   'records',
   'file',
   'workflow',
+  'document',
+  'reporting',
 ] as const;
 type ServiceName = (typeof SERVICES)[number];
 
@@ -45,6 +49,8 @@ const MODULES: Record<ServiceName, Type> = {
   records: RecordsModule,
   file: FileModule,
   workflow: WorkflowModule,
+  document: DocumentModule,
+  reporting: ReportingModule,
 };
 
 async function freePort(): Promise<number> {
@@ -92,6 +98,8 @@ export async function startStack(opts: { env?: Record<string, string> } = {}): P
     FILE_SERVICE_URL: url('file'),
     WORKFLOW_SERVICE_URL: url('workflow'),
     NOTIFICATION_SERVICE_URL: url('notification'),
+    DOCUMENT_SERVICE_URL: url('document'),
+    REPORTING_SERVICE_URL: url('reporting'),
     // Tests run the scheduler by hand and send webhooks to a local receiver.
     SCHEDULER_ENABLED: 'false',
     WEBHOOK_ALLOW_PRIVATE: 'true',
@@ -141,6 +149,8 @@ export async function startStack(opts: { env?: Record<string, string> } = {}): P
       FILE_SERVICE_URL: url('file'),
       WORKFLOW_SERVICE_URL: url('workflow'),
       NOTIFICATION_SERVICE_URL: url('notification'),
+      DOCUMENT_SERVICE_URL: url('document'),
+      REPORTING_SERVICE_URL: url('reporting'),
     }),
   );
   const server: Server = await new Promise((resolve) => {

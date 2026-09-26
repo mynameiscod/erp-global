@@ -8,6 +8,7 @@ import { api, apiUpload } from '../api/client';
 import type { OrgUnitDto, UserDto } from '../api/types';
 import { useLabel } from '../config/hooks';
 import { ErrorAlert } from '../components/ui';
+import { TableInput } from './TableInput';
 
 export interface FieldInputProps {
   field: FieldDef;
@@ -356,6 +357,8 @@ export function FieldInput(props: FieldInputProps) {
     case 'file':
     case 'image':
       return <FileInput {...props} />;
+    case 'table':
+      return <TableInput {...props} />;
     case 'formula':
     case 'autonumber':
       return (

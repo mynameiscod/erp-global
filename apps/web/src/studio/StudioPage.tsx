@@ -12,6 +12,8 @@ import { AutomationsTab } from './AutomationsTab';
 import { EntitiesTab } from './EntitiesTab';
 import { EntityEditor } from './EntityEditor';
 import { NumberingTab } from './NumberingTab';
+import { DashboardsTab, ReportsTab } from './OutputsTabs';
+import { PrintTemplatesTab } from './PrintTemplatesTab';
 import { PicklistsTab } from './PicklistsTab';
 import { RulesTab } from './RulesTab';
 import { SettingsTab } from './SettingsTab';
@@ -137,6 +139,9 @@ export function StudioPage() {
     ['rules', 'studio.rules', 'shield-check'],
     ['automations', 'studio.automations', 'lightning-charge'],
     ['templates', 'studio.templates', 'chat-square-text'],
+    ['print', 'studio.print', 'printer'],
+    ['reports', 'studio.reports', 'bar-chart'],
+    ['dashboards', 'studio.dashboards', 'grid-1x2'],
     ['versions', 'studio.versions', 'clock-history'],
     ['settings', 'studio.settings', 'sliders'],
   ];
@@ -241,6 +246,9 @@ export function StudioPage() {
         <Route path="rules" element={<RulesTab />} />
         <Route path="automations" element={<AutomationsTab />} />
         <Route path="templates" element={<TemplatesTab />} />
+        <Route path="print" element={<PrintTemplatesTab />} />
+        <Route path="reports" element={<ReportsTab />} />
+        <Route path="dashboards" element={<DashboardsTab />} />
         <Route path="versions" element={<VersionsTab />} />
         <Route path="settings" element={<SettingsTab />} />
       </Routes>

@@ -46,6 +46,8 @@ describe('api-gateway', () => {
       'files',
       'workflow',
       'notification',
+      'document',
+      'reporting',
     ];
     const ups = await Promise.all(names.map(echoServer));
     servers.push(...ups.map((u) => u.server));
@@ -65,6 +67,8 @@ describe('api-gateway', () => {
       FILE_SERVICE_URL: url.files,
       WORKFLOW_SERVICE_URL: url.workflow,
       NOTIFICATION_SERVICE_URL: url.notification,
+      DOCUMENT_SERVICE_URL: url.document,
+      REPORTING_SERVICE_URL: url.reporting,
     });
     gateway = createGateway(env);
   });

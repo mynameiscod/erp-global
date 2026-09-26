@@ -49,6 +49,7 @@ function SideNav({ onNavigate }: { onNavigate?: () => void }) {
       ]
     : [
         { to: '/', icon: 'speedometer2', label: t('nav.dashboard') },
+        { to: '/reports', icon: 'bar-chart-line', label: t('nav.reports') },
         {
           to: '/approvals',
           icon: 'check2-square',
