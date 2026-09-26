@@ -18,6 +18,10 @@
  *   HAS_ROLE("Finance")   the acting user holds this role (name or key)
  *   IN_UNIT("HYD")        the record is in the unit with this code, or below it
  *   STATUS()              the record's workflow state
+ *
+ * Columns of a table field (line items) are read through aggregates:
+ *
+ *   SUM(lines.amount)     total of a column; also MIN, MAX, AVG and COUNT
  */
 
 export class FormulaError extends Error {
@@ -105,6 +109,12 @@ function tokenize(src: string): Token[] {
 const CONTEXT_PREFIXES = ['old.', 'user.'];
 /** Functions that read the context; not allowed in calculated fields. */
 export const CONTEXT_FUNCTIONS = ['CHANGED', 'HAS_ROLE', 'IN_UNIT', 'STATUS'];
+/** Functions that accept a table column (`lines.amount`) and run over every row. */
+export const AGGREGATE_FUNCTIONS = ['SUM', 'MIN', 'MAX', 'AVG', 'COUNT'];
+
+const isContextName = (name: string) => CONTEXT_PREFIXES.some((p) => name.startsWith(p));
+/** `lines.amount`: a column of the table field `lines`. */
+const isColumnRef = (name: string) => name.includes('.') && !isContextName(name);
 
 const PRECEDENCE: Record<string, number> = {
   '||': 1,
@@ -203,9 +213,6 @@ class Parser {
         }
         return { kind: 'call', name: upper, args };
       }
-      if (t.v.includes('.') && !CONTEXT_PREFIXES.some((p) => t.v.startsWith(p))) {
-        throw new FormulaError(`Unknown name "${t.v}"`, t.pos);
-      }
       return { kind: 'field', name: t.v };
     }
     throw new FormulaError(
@@ -263,9 +270,26 @@ const FUNCTIONS: Record<string, Fn> = {
   FLOOR: { arity: [1, 1], call: ([a]) => Math.floor(num(a())) },
   CEIL: { arity: [1, 1], call: ([a]) => Math.ceil(num(a())) },
   ABS: { arity: [1, 1], call: ([a]) => Math.abs(num(a())) },
-  MIN: { arity: [1, 20], call: (args) => Math.min(...args.map((a) => num(a()))) },
-  MAX: { arity: [1, 20], call: (args) => Math.max(...args.map((a) => num(a()))) },
+  MIN: {
+    arity: [1, 20],
+    call: (args) => (args.length ? Math.min(...args.map((a) => num(a()))) : null),
+  },
+  MAX: {
+    arity: [1, 20],
+    call: (args) => (args.length ? Math.max(...args.map((a) => num(a()))) : null),
+  },
   SUM: { arity: [1, 20], call: (args) => args.reduce((s, a) => s + num(a()), 0) },
+  AVG: {
+    arity: [1, 20],
+    call: (args) => {
+      const values = args.map((a) => a()).filter((v) => v !== null && v !== '');
+      return values.length ? values.reduce<number>((s, v) => s + num(v), 0) / values.length : null;
+    },
+  },
+  COUNT: {
+    arity: [1, 20],
+    call: (args) => args.map((a) => a()).filter((v) => v !== null && v !== '').length,
+  },
   CONCAT: { arity: [1, 20], call: (args) => args.map((a) => str(a())).join('') },
   UPPER: { arity: [1, 1], call: ([a]) => str(a()).toUpperCase() },
   LOWER: { arity: [1, 1], call: ([a]) => str(a()).toLowerCase() },
@@ -347,6 +371,8 @@ function evaluate(node: Node, ctx: EvalContext): Value {
       if (node.name.startsWith('user.')) {
         return node.name === 'user.id' ? (ctx.user?.id ?? null) : null;
       }
+      // Table columns only have a value inside an aggregate; compile refuses other uses.
+      if (isColumnRef(node.name)) return null;
       return toValue(ctx.fields[node.name]);
     }
     case 'unary': {
@@ -397,6 +423,15 @@ function evaluate(node: Node, ctx: EvalContext): Value {
         if (!ctx.old) return now !== 'null' && now !== '""';
         return now !== JSON.stringify(ctx.old[name] ?? null);
       }
+      if (AGGREGATE_FUNCTIONS.includes(node.name)) {
+        // A table column stands for one argument per row.
+        const args = node.args.flatMap((a) =>
+          a.kind === 'field' && isColumnRef(a.name)
+            ? columnValues(ctx.fields, a.name).map((v) => () => v)
+            : [() => evaluate(a, ctx)],
+        );
+        return FUNCTIONS[node.name].call(args, ctx);
+      }
       return FUNCTIONS[node.name].call(
         node.args.map((a) => () => evaluate(a, ctx)),
         ctx,
@@ -404,10 +439,25 @@ function evaluate(node: Node, ctx: EvalContext): Value {
   }
 }
 
-function collectFields(node: Node, out: Set<string>, context: Set<string>): void {
+/** Values of one column over every row of a table field. */
+function columnValues(fields: Record<string, unknown>, ref: string): Value[] {
+  const [table, column] = ref.split('.');
+  const rows = fields[table];
+  if (!Array.isArray(rows)) return [];
+  return rows.map((r) => toValue((r as Record<string, unknown> | null)?.[column]));
+}
+
+function collectFields(node: Node, out: Set<string>, context: Set<string>, inAggregate = false) {
   switch (node.kind) {
     case 'field':
-      if (node.name.includes('.')) {
+      if (isColumnRef(node.name)) {
+        if (!inAggregate) {
+          throw new FormulaError(
+            `Unknown name "${node.name}". A table column must be inside SUM, MIN, MAX, AVG or COUNT, e.g. SUM(${node.name})`,
+          );
+        }
+        out.add(node.name);
+      } else if (node.name.includes('.')) {
         context.add(node.name);
         if (node.name.startsWith('old.')) out.add(node.name.slice(4));
       } else out.add(node.name);
@@ -419,15 +469,21 @@ function collectFields(node: Node, out: Set<string>, context: Set<string>): void
       collectFields(node.left, out, context);
       collectFields(node.right, out, context);
       break;
-    case 'call':
+    case 'call': {
       if (CONTEXT_FUNCTIONS.includes(node.name)) context.add(`${node.name}()`);
-      node.args.forEach((a) => collectFields(a, out, context));
+      const aggregate = AGGREGATE_FUNCTIONS.includes(node.name);
+      // Only a bare column is expanded over rows; `SUM(lines.qty * 2)` is not supported.
+      node.args.forEach((a) => collectFields(a, out, context, aggregate && a.kind === 'field'));
       break;
+    }
   }
 }
 
 export interface CompiledFormula {
-  /** Field keys the formula reads (including those read through `old.`). */
+  /**
+   * Field keys the formula reads (including those read through `old.`). Table columns
+   * appear as `table.column`.
+   */
   fields: string[];
   /** Context the formula reads: `old.x`, `user.id`, `CHANGED()`… Empty for plain formulas. */
   context: string[];
@@ -447,4 +503,27 @@ export function compileFormula(source: string): CompiledFormula {
       return typeof v === 'number' && !Number.isFinite(v) ? null : v;
     },
   };
+}
+
+/** Field keys a formula depends on, with table columns reduced to their table. */
+export function formulaFieldKeys(deps: string[]): string[] {
+  return [...new Set(deps.map((d) => d.split('.')[0]))];
+}
+
+/**
+ * Names a formula reads that the entity does not have. `fields` are the entity's fields;
+ * `table.column` must name a table field and one of its columns.
+ */
+export function unknownFormulaNames(
+  deps: string[],
+  fields: { key: string; type: string; columns?: { key: string }[] }[],
+): string[] {
+  const byKey = new Map(fields.map((f) => [f.key, f]));
+  return deps.filter((d) => {
+    const [key, column] = d.split('.');
+    const f = byKey.get(key);
+    if (!f) return true;
+    if (column === undefined) return false;
+    return f.type !== 'table' || !f.columns?.some((c) => c.key === column);
+  });
 }

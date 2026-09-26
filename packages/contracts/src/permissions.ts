@@ -120,6 +120,25 @@ export const PERMISSIONS = [
     description: 'View automation runs, re-run failures and see the webhook signing secret',
   },
 
+  {
+    key: 'reports.personal',
+    module: 'reports',
+    scope: 'tenant',
+    description: 'Build personal reports and dashboards from data you can see',
+  },
+  {
+    key: 'reports.share',
+    module: 'reports',
+    scope: 'tenant',
+    description: 'Share personal reports and dashboards with a role',
+  },
+  {
+    key: 'reports.export',
+    module: 'reports',
+    scope: 'tenant',
+    description: 'Export reports to Excel, CSV or PDF and receive scheduled reports',
+  },
+
   { key: 'audit.event.read', module: 'audit', scope: 'tenant', description: 'View the audit log' },
   {
     key: 'audit.chain.verify',

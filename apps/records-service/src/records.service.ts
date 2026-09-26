@@ -22,6 +22,7 @@ import {
   workflowFor,
   pickText,
   type EntityDef,
+  type FieldDef,
   type FieldEffects,
   type RecordData,
   type RecordIssue,
@@ -208,10 +209,21 @@ export class RecordsService {
     const issues: RecordIssue[] = [];
     const fields = new Map(entity.fields.map((f) => [f.key, f]));
     const Records = await this.records();
+    // Lookup columns of table fields are checked like lookup fields, with every row's values.
+    const checks: { key: string; f: FieldDef; value: unknown }[] = [];
     for (const key of keys) {
       const f = fields.get(key);
-      const value = data[key];
-      if (!f || isEmpty(value)) continue;
+      if (!f || isEmpty(data[key])) continue;
+      if (f.type !== 'table') {
+        checks.push({ key, f, value: data[key] });
+        continue;
+      }
+      for (const c of (f.columns ?? []).filter((x) => x.type === 'lookup')) {
+        const values = (data[key] as RecordData[]).map((r) => r[c.key]).filter((v) => !isEmpty(v));
+        if (values.length) checks.push({ key, f: c, value: [...new Set(values)] });
+      }
+    }
+    for (const { key, f, value } of checks) {
       const ids = (Array.isArray(value) ? value : [value]) as string[];
       try {
         if (f.type === 'lookup' || f.type === 'lookup_many') {

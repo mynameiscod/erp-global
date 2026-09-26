@@ -79,6 +79,14 @@ export const EventTypes = {
   DelegationCleared: 'identity.delegation.cleared',
 
   FileUploaded: 'files.file.uploaded',
+
+  DocumentPrinted: 'documents.document.printed',
+  DocumentEmailed: 'documents.document.emailed',
+  DocumentAttached: 'documents.document.attached',
+
+  ReportExported: 'reports.report.exported',
+  ReportScheduleSent: 'reports.schedule.sent',
+  ReportShared: 'reports.report.shared',
 } as const;
 
 export type EventType = (typeof EventTypes)[keyof typeof EventTypes];
@@ -98,6 +106,8 @@ export const NotifyTypes = {
   WhatsappRequested: 'notify.whatsapp.requested',
   /** A notification for users of the company, delivered on the channels they allow. */
   UserNotify: 'notify.user.requested',
+  /** An email with attachments to any address (documents, scheduled reports). */
+  MailSend: 'notify.mail.send',
 } as const;
 
 export function subjectFor(type: string): string {
@@ -137,6 +147,15 @@ export interface UserNotifyPayload {
   orgPath?: string;
   /** Approval requests always stay in the in-app inbox, whatever the user's preferences. */
   essential?: boolean;
+}
+
+/** A composed email; attachments are files in file-service, fetched when the mail is sent. */
+export interface MailSendPayload {
+  to: string[];
+  subject: string;
+  text: string;
+  html?: string;
+  attachments: { fileId: string; name: string }[];
 }
 
 /** Record events carry this so automations triggered by automations can be cut off. */

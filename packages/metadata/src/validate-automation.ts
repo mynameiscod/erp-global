@@ -1,6 +1,6 @@
 import type { ApproverSpec, AutomationDef, Recipient, WorkflowDef } from './automation-types';
 import { BUILTIN_TEMPLATE_KEYS } from './builtin-templates';
-import { compileFormula, FormulaError } from './formula';
+import { compileFormula, FormulaError, unknownFormulaNames } from './formula';
 import type { ConfigLayer, EntityPatch } from './types';
 
 type Add = (path: string, message: string) => void;
@@ -10,8 +10,7 @@ function checkFormula(src: string | undefined, entity: EntityPatch, path: string
   if (!src?.trim()) return;
   try {
     const f = compileFormula(src);
-    const keys = new Set(entity.fields.map((x) => x.key));
-    for (const d of f.fields) if (!keys.has(d)) add(path, `Unknown field "${d}"`);
+    for (const d of unknownFormulaNames(f.fields, entity.fields)) add(path, `Unknown field "${d}"`);
   } catch (e) {
     add(path, e instanceof FormulaError ? e.message : 'Invalid formula');
   }

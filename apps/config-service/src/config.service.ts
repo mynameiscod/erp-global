@@ -3,6 +3,7 @@ import type { Connection } from 'mongoose';
 import { EventTypes, hasPermission, type Permission } from '@erp/contracts';
 import { OutboxWriter } from '@erp/events';
 import {
+  dashboardSchema,
   diffConfigs,
   emptyLayer,
   emptyTenantConfig,
@@ -20,7 +21,9 @@ import {
   pathIds,
   picklistSchema,
   platformBaseLayer,
+  printTemplateSchema,
   renderNumber,
+  reportSchema,
   resolveEffective,
   settingsSchema,
   validateTenantConfig,
@@ -55,6 +58,9 @@ export const KINDS = {
   rules: { list: 'rules', key: 'key', schema: ruleSchema },
   automations: { list: 'automations', key: 'key', schema: automationSchema },
   templates: { list: 'templates', key: 'key', schema: messageTemplateSchema },
+  'print-templates': { list: 'printTemplates', key: 'key', schema: printTemplateSchema },
+  reports: { list: 'reports', key: 'key', schema: reportSchema },
+  dashboards: { list: 'dashboards', key: 'key', schema: dashboardSchema },
 } as const satisfies Record<string, { list: keyof ConfigLayer; key: string; schema: ZodType }>;
 export type Kind = keyof typeof KINDS;
 

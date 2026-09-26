@@ -319,11 +319,22 @@ export class OrgService {
         code: u.code ?? null,
         path: u.path,
         headUserId: u.headUserId ?? null,
+        custom: u.custom ?? {},
       }));
   }
 
   async internalGet(id: string) {
-    const u = await this.load(id);
+    return this.internalDto(await this.load(id));
+  }
+
+  /** Several units at once (report labels, documents). Unknown ids are skipped. */
+  async internalBatch(ids: string[]) {
+    const valid = ids.filter((i) => Types.ObjectId.isValid(i)).slice(0, 1000);
+    const units = await (await this.units()).find({ _id: { $in: valid } }).lean();
+    return units.map((u) => this.internalDto(u));
+  }
+
+  private internalDto(u: OrgUnit) {
     return {
       id: String(u._id),
       name: u.name,
@@ -331,6 +342,7 @@ export class OrgService {
       path: u.path,
       status: u.status,
       headUserId: u.headUserId ?? null,
+      custom: u.custom ?? {},
     };
   }
 }

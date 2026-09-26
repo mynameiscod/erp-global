@@ -53,5 +53,8 @@ export function platformBaseLayer(): ConfigLayer {
     rules: [],
     automations: [],
     templates: [],
+    printTemplates: [],
+    reports: [],
+    dashboards: [],
   };
 }

@@ -130,6 +130,33 @@ describe('tenantPlugin', () => {
     await expect(asA(() => Item.aggregate([{ $unionWith: 'items' }]))).rejects.toBeInstanceOf(
       TenantIsolationError,
     );
+    // A lookup for another tenant, or hidden in a facet, is refused too.
+    await expect(
+      asA(() =>
+        Item.aggregate([
+          { $lookup: { from: 'items', pipeline: [{ $match: { tenantId: B } }], as: 'z' } },
+        ]),
+      ),
+    ).rejects.toBeInstanceOf(TenantIsolationError);
+    await expect(
+      asA(() => Item.aggregate([{ $facet: { x: [{ $unionWith: 'items' }] } }])),
+    ).rejects.toBeInstanceOf(TenantIsolationError);
+  });
+
+  it('allows a lookup that matches the current tenant', async () => {
+    const res = await asA(() =>
+      Item.aggregate<{ others: unknown[] }>([
+        { $limit: 1 },
+        {
+          $lookup: {
+            from: Item.collection.collectionName,
+            pipeline: [{ $match: { tenantId: A } }],
+            as: 'others',
+          },
+        },
+      ]),
+    );
+    expect(res[0].others.every((o) => (o as { tenantId: string }).tenantId === A)).toBe(true);
   });
 
   it('scopes insertMany, including lean inserts', async () => {

@@ -20,7 +20,6 @@ const FILTERED_QUERY_OPS = [
 
 /** Stages that read other collections and would escape the tenant filter. */
 const FORBIDDEN_STAGES = [
-  '$lookup',
   '$graphLookup',
   '$unionWith',
   '$out',
@@ -30,6 +29,39 @@ const FORBIDDEN_STAGES = [
   '$searchMeta',
   '$vectorSearch',
 ];
+
+/**
+ * Refuses stages that read other collections, except a `$lookup` whose own pipeline
+ * matches the current tenant (reports join linked records this way).
+ */
+function checkStages(stages: PipelineStage[], tenantId: string): void {
+  for (const stage of stages) {
+    for (const [name, spec] of Object.entries(stage)) {
+      if (name === '$lookup') {
+        const lookup = spec as { pipeline?: PipelineStage[] };
+        const scoped = lookup.pipeline?.some(
+          (s) =>
+            '$match' in s &&
+            (s as { $match: Record<string, unknown> }).$match[TENANT_FIELD] === tenantId,
+        );
+        if (!Array.isArray(lookup.pipeline) || !scoped) {
+          throw new TenantIsolationError(
+            `Aggregate stage $lookup must match ${TENANT_FIELD} in its pipeline`,
+          );
+        }
+        checkStages(lookup.pipeline, tenantId);
+        continue;
+      }
+      if (name === '$facet') {
+        for (const sub of Object.values(spec as Record<string, PipelineStage[]>))
+          checkStages(sub, tenantId);
+        continue;
+      }
+      if (FORBIDDEN_STAGES.includes(name))
+        throw new TenantIsolationError(`Aggregate stage ${name} is not allowed on tenant data`);
+    }
+  }
+}
 
 function bypass(): boolean {
   return getContext()?.bypassTenant === true;
@@ -115,9 +147,7 @@ export function tenantPlugin(schema: Schema): void {
     if (bypass()) return;
     const tenantId = requireTenantId();
     const pipeline = this.pipeline();
-    const stageNames = (stages: PipelineStage[]): string[] => stages.flatMap((s) => Object.keys(s));
-    const bad = stageNames(pipeline).find((k) => FORBIDDEN_STAGES.includes(k));
-    if (bad) throw new TenantIsolationError(`Aggregate stage ${bad} is not allowed on tenant data`);
+    checkStages(pipeline, tenantId);
     pipeline.unshift({ $match: { [TENANT_FIELD]: tenantId } });
   });
 

@@ -22,8 +22,8 @@ export interface OrgUnitInfo {
 export interface Clients {
   config: ConfigClient;
   configApi: Pick<ServiceClient, 'post'>;
-  org: Pick<ServiceClient, 'get'>;
-  identity: Pick<ServiceClient, 'get'>;
+  org: Pick<ServiceClient, 'get' | 'post'>;
+  identity: Pick<ServiceClient, 'get' | 'post'>;
   files: Pick<ServiceClient, 'get'>;
   access: Pick<ServiceClient, 'get'>;
 }

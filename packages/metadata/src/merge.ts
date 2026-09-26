@@ -36,6 +36,9 @@ export function mergeLayers(layers: ConfigLayer[]): ConfigLayer {
   const rules = new Map<string, ConfigLayer['rules'][number]>();
   const automations = new Map<string, ConfigLayer['automations'][number]>();
   const templates = new Map<string, ConfigLayer['templates'][number]>();
+  const printTemplates = new Map<string, ConfigLayer['printTemplates'][number]>();
+  const reports = new Map<string, ConfigLayer['reports'][number]>();
+  const dashboards = new Map<string, ConfigLayer['dashboards'][number]>();
   let settings: ConfigSettings = {};
   for (const raw of layers) {
     const layer = normalizeLayer(raw);
@@ -49,6 +52,10 @@ export function mergeLayers(layers: ConfigLayer[]): ConfigLayer {
     for (const r of layer.rules) rules.set(r.key, r);
     for (const a of layer.automations) automations.set(a.key, a);
     for (const t of layer.templates) templates.set(t.key, t);
+    // A branch can replace a print template (its own letterhead), a report or a dashboard.
+    for (const p of layer.printTemplates) printTemplates.set(p.key, p);
+    for (const r of layer.reports) reports.set(r.key, r);
+    for (const d of layer.dashboards) dashboards.set(d.key, d);
     settings = { ...settings, ...(layer.settings ?? {}) };
   }
   return {
@@ -61,6 +68,9 @@ export function mergeLayers(layers: ConfigLayer[]): ConfigLayer {
     rules: [...rules.values()],
     automations: [...automations.values()],
     templates: [...templates.values()],
+    printTemplates: [...printTemplates.values()],
+    reports: [...reports.values()],
+    dashboards: [...dashboards.values()],
     settings,
   };
 }

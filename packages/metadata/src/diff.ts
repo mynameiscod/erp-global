@@ -45,6 +45,9 @@ function diffLayer(prev: ConfigLayer, next: ConfigLayer, out: string[], prefix: 
   diffList('rule', p.rules, n.rules, out, prefix);
   diffList('automation', p.automations, n.automations, out, prefix);
   diffList('message template', p.templates, n.templates, out, prefix);
+  diffList('print template', p.printTemplates, n.printTemplates, out, prefix);
+  diffList('report', p.reports, n.reports, out, prefix);
+  diffList('dashboard', p.dashboards, n.dashboards, out, prefix);
   if (JSON.stringify(prev.settings ?? {}) !== JSON.stringify(next.settings ?? {}))
     out.push(`${prefix}Changed settings`);
 }

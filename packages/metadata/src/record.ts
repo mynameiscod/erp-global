@@ -1,5 +1,12 @@
-import { compileFormula, FormulaError } from './formula';
-import { COMPUTED_TYPES, type EffectiveConfig, type EntityDef, type FieldDef } from './types';
+import { compileFormula, FormulaError, formulaFieldKeys } from './formula';
+import { pickText } from './i18n';
+import {
+  COMPUTED_TYPES,
+  TABLE_MAX_ROWS,
+  type EffectiveConfig,
+  type EntityDef,
+  type FieldDef,
+} from './types';
 
 export type RecordData = Record<string, unknown>;
 
@@ -150,10 +157,47 @@ export function normalizeValue(f: FieldDef, v: unknown, ctx: RecordContext): Res
     case 'file':
     case 'image':
       return typeof v === 'string' && FILE_ID_RE.test(v) ? ok(v) : fail('Invalid file');
+    case 'table':
+      return normalizeRows(f, v, ctx);
     case 'formula':
     case 'autonumber':
       return fail('Calculated automatically');
   }
+}
+
+/**
+ * Rows of a table field: each column checked like a field, row formulas computed.
+ * Keys starting with `_` (row ids used by forms) are dropped.
+ */
+function normalizeRows(f: FieldDef, v: unknown, ctx: RecordContext): Result {
+  if (!Array.isArray(v)) return fail('Must be a list of rows');
+  const max = Math.min(f.maxRows ?? TABLE_MAX_ROWS, TABLE_MAX_ROWS);
+  if (v.length > max) return fail(`At most ${max} rows`);
+  const columns = new Map((f.columns ?? []).map((c) => [c.key, c]));
+  const rowEntity = { fields: f.columns ?? [] } as EntityDef;
+  const rows: RecordData[] = [];
+  for (const [i, raw] of v.entries()) {
+    const where = `Row ${i + 1}`;
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw))
+      return fail(`${where}: invalid row`);
+    const row: RecordData = {};
+    for (const [key, value] of Object.entries(raw as RecordData)) {
+      if (key.startsWith('_')) continue;
+      const c = columns.get(key);
+      if (!c) return fail(`${where}: unknown column "${key}"`);
+      if (COMPUTED_TYPES.has(c.type) || c.archived || isEmpty(value)) continue;
+      const r = normalizeValue(c, value, ctx);
+      if (!r.ok) return fail(`${where}, ${pickText(c.label, 'en')}: ${r.message}`);
+      row[key] = r.value;
+    }
+    for (const c of columns.values()) {
+      if (c.required && !c.archived && !COMPUTED_TYPES.has(c.type) && isEmpty(row[c.key]))
+        return fail(`${where}: ${pickText(c.label, 'en')} is required`);
+    }
+    computeFormulas(rowEntity, row, ctx.now);
+    rows.push(row);
+  }
+  return ok(rows);
 }
 
 function coerceFormula(f: FieldDef, v: unknown): unknown {
@@ -184,7 +228,7 @@ export function formulaOrder(entity: EntityDef): FieldDef[] {
   const visit = (key: string, depth: number) => {
     if (seen.has(key) || depth > formulas.size) return;
     const f = formulas.get(key)!;
-    for (const dep of compileFormula(f.formula!).fields)
+    for (const dep of formulaFieldKeys(compileFormula(f.formula!).fields))
       if (formulas.has(dep)) visit(dep, depth + 1);
     seen.add(key);
     order.push(f);

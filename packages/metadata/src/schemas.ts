@@ -1,25 +1,21 @@
 import { z } from 'zod';
-import { FIELD_TYPES } from './types';
+import { dashboardSchema } from './dashboards';
+import { printTemplateSchema } from './print';
+import { reportSchema } from './reports';
+import {
+  condition,
+  keySchema,
+  langTag,
+  localizedTextSchema,
+  longLocalized,
+  objectId,
+  optionalLocalized,
+} from './schema-base';
+import { FIELD_TYPES, TABLE_MAX_ROWS } from './types';
 
 /** Input schemas for the config studio API. Cross-item checks live in `validateTenantConfig`. */
 
-export const KEY_RE = /^[a-z][a-z0-9_]{1,39}$/;
-export const keySchema = z
-  .string()
-  .regex(KEY_RE, 'Use 2-40 characters: a-z, 0-9 and _, starting with a letter');
-const langTag = z.string().regex(/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/);
-
-export const localizedTextSchema = z
-  .record(langTag, z.string().trim().max(200))
-  .refine(
-    (t) => Object.values(t).some((v) => v.length > 0),
-    'Enter the text in at least one language',
-  )
-  .refine((t) => Object.keys(t).length <= 30, 'Too many languages');
-
-const optionalLocalized = localizedTextSchema.optional();
-
-export const fieldDefSchema = z
+const fieldBaseSchema = z
   .object({
     key: keySchema,
     type: z.enum(FIELD_TYPES),
@@ -48,8 +44,14 @@ export const fieldDefSchema = z
     numbering: keySchema.optional(),
     accept: z.array(z.string().max(100)).max(30).optional(),
     maxSizeMb: z.number().min(0.1).max(100).optional(),
+    maxRows: z.number().int().min(1).max(TABLE_MAX_ROWS).optional(),
   })
   .strict();
+
+/** A field, or a table field whose columns are fields themselves (one level deep). */
+export const fieldDefSchema = fieldBaseSchema.extend({
+  columns: z.array(fieldBaseSchema).min(1).max(30).optional(),
+});
 
 export const entityPatchSchema = z
   .object({
@@ -138,8 +140,6 @@ export const settingsSchema = z
 
 // ---- Step 4: workflows, rules, automations, message templates ----
 
-const objectId = z.string().regex(/^[a-f0-9]{24}$/, 'Invalid id');
-const condition = z.string().trim().max(2000).optional();
 const hours = z
   .number()
   .min(0.25)
@@ -316,13 +316,6 @@ export const automationSchema = z
   })
   .strict();
 
-const longLocalized = z
-  .record(langTag, z.string().max(4000))
-  .refine(
-    (t) => Object.values(t).some((v) => v.trim().length > 0),
-    'Enter the text in at least one language',
-  );
-
 export const messageTemplateSchema = z
   .object({
     key: z.string().regex(/^[a-z][a-z0-9_.]{1,59}$/, 'Use a-z, 0-9, _ and .'),
@@ -349,5 +342,8 @@ export const configLayerSchema = z.object({
   rules: z.array(ruleSchema).max(1000).default([]),
   automations: z.array(automationSchema).max(500).default([]),
   templates: z.array(messageTemplateSchema).max(500).default([]),
+  printTemplates: z.array(printTemplateSchema).max(200).default([]),
+  reports: z.array(reportSchema).max(500).default([]),
+  dashboards: z.array(dashboardSchema).max(100).default([]),
   settings: settingsSchema.optional(),
 });

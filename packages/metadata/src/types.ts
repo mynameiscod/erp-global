@@ -1,4 +1,7 @@
 import type { AutomationDef, MessageTemplate, RuleDef, WorkflowDef } from './automation-types';
+import type { DashboardDef } from './dashboards';
+import type { PrintTemplateDef } from './print';
+import type { ReportDef } from './reports';
 
 /** Text in several languages, e.g. `{ en: 'Student', hi: 'छात्र', ar: 'طالب' }`. */
 export type LocalizedText = Record<string, string>;
@@ -25,12 +28,31 @@ export const FIELD_TYPES = [
   'image',
   'formula',
   'autonumber',
+  'table',
 ] as const;
 
 export type FieldType = (typeof FIELD_TYPES)[number];
 
 /** Types whose value is computed by the server, never sent by the client. */
 export const COMPUTED_TYPES: ReadonlySet<FieldType> = new Set(['formula', 'autonumber']);
+
+/** Column types a table field (line items) can have. */
+export const TABLE_COLUMN_TYPES: readonly FieldType[] = [
+  'text',
+  'longtext',
+  'integer',
+  'decimal',
+  'currency',
+  'percent',
+  'date',
+  'boolean',
+  'select',
+  'lookup',
+  'formula',
+];
+
+/** Default and hard limit on rows in one table field. */
+export const TABLE_MAX_ROWS = 500;
 
 export interface FieldDef {
   key: string;
@@ -68,6 +90,10 @@ export interface FieldDef {
   // file / image
   accept?: string[];
   maxSizeMb?: number;
+  // table: rows stored inside the record, each column a field of its own
+  columns?: FieldDef[];
+  /** At most this many rows (default and maximum 500). */
+  maxRows?: number;
 }
 
 export interface EntityDef {
@@ -154,6 +180,10 @@ export interface ConfigLayer {
   rules: RuleDef[];
   automations: AutomationDef[];
   templates: MessageTemplate[];
+  /** Step 5. Missing in layers saved before it; read them through `normalizeLayer`. */
+  printTemplates: PrintTemplateDef[];
+  reports: ReportDef[];
+  dashboards: DashboardDef[];
   settings?: ConfigSettings;
 }
 
@@ -188,6 +218,9 @@ export function emptyLayer(): ConfigLayer {
     rules: [],
     automations: [],
     templates: [],
+    printTemplates: [],
+    reports: [],
+    dashboards: [],
   };
 }
 

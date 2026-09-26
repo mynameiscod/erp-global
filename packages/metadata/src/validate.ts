@@ -1,11 +1,13 @@
-import { compileFormula, FormulaError } from './formula';
+import { compileFormula, FormulaError, formulaFieldKeys, unknownFormulaNames } from './formula';
 import { layersFor, mergeLayers } from './merge';
 import { validateNumberingPattern } from './numbering';
 import { configLayerSchema } from './schemas';
 import { checkAutomationItems } from './validate-automation';
+import { checkOutputItems } from './validate-outputs';
 import { NATIVE_FIELDS, RESERVED_FIELD_KEYS, SYSTEM_ENTITY_KEYS } from './system';
 import {
   SYSTEM_COLUMNS,
+  TABLE_COLUMN_TYPES,
   type ConfigLayer,
   type EntityPatch,
   type FieldDef,
@@ -28,6 +30,7 @@ const UNSUPPORTED_ON_SYSTEM = new Set<FieldType>([
   'file',
   'image',
   'autonumber',
+  'table',
 ]);
 
 /** Type changes that keep existing data valid. */
@@ -97,11 +100,29 @@ function checkDuplicates(scope: string, raw: ConfigLayer, issues: ConfigIssue[])
     'templates',
     layer.templates.map((t) => t.key),
   );
-  for (const e of layer.entities)
+  dup(
+    'printTemplates',
+    layer.printTemplates.map((t) => t.key),
+  );
+  dup(
+    'reports',
+    layer.reports.map((r) => r.key),
+  );
+  dup(
+    'dashboards',
+    layer.dashboards.map((d) => d.key),
+  );
+  for (const e of layer.entities) {
     dup(
       `entities.${e.key}.fields`,
       e.fields.map((f) => f.key),
     );
+    for (const f of e.fields.filter((x) => x.columns))
+      dup(
+        `entities.${e.key}.fields.${f.key}.columns`,
+        f.columns!.map((c) => c.key),
+      );
+  }
   for (const p of layer.picklists)
     dup(
       `picklists.${p.key}.options`,
@@ -140,13 +161,12 @@ function checkMerged(scope: string, merged: ConfigLayer, issues: ConfigIssue[]):
       if (f.type === 'formula' && f.formula) {
         try {
           const compiled = compileFormula(f.formula);
-          const deps = compiled.fields;
-          for (const d of deps)
-            if (!fieldKeys.has(d)) add(`${p}.formula`, `Unknown field "${d}" in formula`);
+          for (const d of unknownFormulaNames(compiled.fields, e.fields))
+            add(`${p}.formula`, `Unknown field "${d}" in formula`);
           if (compiled.context.length) {
             add(`${p}.formula`, `${compiled.context[0]} can only be used in rules and workflows`);
           }
-          formulaDeps.set(f.key, deps);
+          formulaDeps.set(f.key, formulaFieldKeys(compiled.fields));
         } catch (err) {
           add(`${p}.formula`, err instanceof FormulaError ? err.message : 'Invalid formula');
         }
@@ -191,6 +211,7 @@ function checkMerged(scope: string, merged: ConfigLayer, issues: ConfigIssue[]):
     for (const m of validateNumberingPattern(n.pattern)) add(`numbering.${n.key}.pattern`, m);
   }
   checkAutomationItems(normalizeLayer(merged), add);
+  checkOutputItems(normalizeLayer(merged), add);
 }
 
 function checkField(
@@ -227,6 +248,9 @@ function checkField(
       if (!f.numbering) add(p, 'Choose the number series');
       else if (!refs.numbering.has(f.numbering)) add(p, `Unknown number series "${f.numbering}"`);
       break;
+    case 'table':
+      checkTableColumns(f, p, add, refs);
+      break;
     case 'text':
     case 'longtext':
       if (f.pattern) {
@@ -249,6 +273,42 @@ function checkField(
   ) {
     add(p, `A ${f.type} field cannot be unique`);
   }
+}
+
+/** Columns of a table field: simple field types, formulas over the same row only. */
+function checkTableColumns(
+  f: FieldDef,
+  p: string,
+  add: (path: string, message: string) => void,
+  refs: Parameters<typeof checkField>[3],
+): void {
+  if (!f.columns?.length) {
+    add(p, 'Add at least one column');
+    return;
+  }
+  if (f.unique) add(p, 'A table field cannot be unique');
+  const columnKeys = new Set(f.columns.map((c) => c.key));
+  const deps = new Map<string, string[]>();
+  for (const c of f.columns) {
+    const cp = `${p}.columns.${c.key}`;
+    if (!TABLE_COLUMN_TYPES.includes(c.type)) add(cp, `A table column cannot be of type ${c.type}`);
+    if (c.unique) add(cp, 'Table columns cannot be unique');
+    if (c.type === 'formula' && c.formula) {
+      try {
+        const compiled = compileFormula(c.formula);
+        for (const d of compiled.fields)
+          if (!columnKeys.has(d)) add(`${cp}.formula`, `Unknown column "${d}" in formula`);
+        if (compiled.context.length)
+          add(`${cp}.formula`, `${compiled.context[0]} cannot be used in a column`);
+        deps.set(c.key, compiled.fields);
+      } catch (err) {
+        add(`${cp}.formula`, err instanceof FormulaError ? err.message : 'Invalid formula');
+      }
+    }
+    if (c.type !== 'table') checkField(c, cp, add, { ...refs, fieldKeys: columnKeys });
+  }
+  const cycle = findCycle(deps);
+  if (cycle) add(`${p}.columns`, `Formulas refer to each other in a loop: ${cycle.join(' → ')}`);
 }
 
 function findCycle(deps: Map<string, string[]>): string[] | undefined {

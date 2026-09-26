@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { Internal, RequirePermissions } from '@erp/auth';
@@ -72,6 +72,8 @@ export class OrgController {
 
 const bootstrapSchema = z.object({ name: z.string().trim().min(1).max(120) });
 
+const batchSchema = z.object({ ids: z.array(z.string().max(40)).max(1000) });
+
 @Controller('internal/org')
 @Internal()
 export class InternalOrgController {
@@ -85,6 +87,12 @@ export class InternalOrgController {
   @Delete('bootstrap')
   undo() {
     return this.org.undoBootstrap();
+  }
+
+  @Post('units/batch')
+  @HttpCode(200)
+  batch(@Body(new ZodPipe(batchSchema)) body: z.infer<typeof batchSchema>) {
+    return this.org.internalBatch(body.ids);
   }
 
   @Get('units/:id/ancestors')
