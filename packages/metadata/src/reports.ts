@@ -86,6 +86,11 @@ export interface ReportDef {
   label: LocalizedText;
   description?: LocalizedText;
   entity: string;
+  /**
+   * One row per line item of this table field instead of one per record. Paths
+   * `<lines>.<column>` read the line; other paths read the record.
+   */
+  lines?: string;
   /** Rows of records: the columns shown. Grouped and pivot reports show their groups instead. */
   columns: { path: ReportPath; label?: LocalizedText }[];
   filters: ReportFilter[];
@@ -101,6 +106,8 @@ export interface ReportDef {
   dateField?: ReportPath;
   /** Company reports: roles that see the report. Empty: everyone who can read the entity. */
   roleIds?: string[];
+  /** The same, by role key (used by packs, whose roles get their ids when installed). */
+  roleKeys?: string[];
 }
 
 // ---- schema ----
@@ -141,6 +148,7 @@ export const reportSchema = z
     label: localizedTextSchema,
     description: localizedTextSchema.optional(),
     entity: keySchema,
+    lines: keySchema.optional(),
     columns: z
       .array(z.object({ path: pathSchema, label: localizedTextSchema.optional() }).strict())
       .max(50),
@@ -165,6 +173,7 @@ export const reportSchema = z
       .optional(),
     dateField: pathSchema.optional(),
     roleIds: z.array(objectId).max(50).optional(),
+    roleKeys: z.array(keySchema).max(50).optional(),
   })
   .strict();
 

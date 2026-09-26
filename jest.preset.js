@@ -1,6 +1,15 @@
 const path = require('path');
 
-const PACKAGES = ['contracts', 'metadata', 'tenancy', 'auth', 'events', 'service-kit', 'testing'];
+const PACKAGES = [
+  'contracts',
+  'metadata',
+  'packs',
+  'tenancy',
+  'auth',
+  'events',
+  'service-kit',
+  'testing',
+];
 
 /** Shared Jest config. Workspace packages resolve to their TypeScript source, so tests need no build. */
 module.exports = function preset(dir, overrides = {}) {

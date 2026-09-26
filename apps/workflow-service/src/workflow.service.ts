@@ -10,6 +10,7 @@ import {
 } from '@erp/contracts';
 import { OutboxWriter } from '@erp/events';
 import {
+  addWorkingTime,
   conditionHolds,
   findEntity,
   pickText,
@@ -269,13 +270,16 @@ export class WorkflowService {
     const Tasks = await this.tasks();
     const now = this.clock.now();
     const vars = recordVars(record, entity);
+    // With a working calendar, reminders and escalations count working hours only.
+    const cfg = await this.cfgFor(record.orgPath);
+    const cal = cfg.calendar;
+    const after = (hours: number) =>
+      cal?.workingHoursOnly
+        ? addWorkingTime(now, hours, cal, cfg.tenant.timezone ?? 'UTC')
+        : new Date(now.getTime() + hours * HOUR);
     for (const assigneeId of assignees) {
-      const remindAt = level.remindAfterHours
-        ? new Date(now.getTime() + level.remindAfterHours * HOUR)
-        : null;
-      const escalateAt = level.escalateAfterHours
-        ? new Date(now.getTime() + level.escalateAfterHours * HOUR)
-        : null;
+      const remindAt = level.remindAfterHours ? after(level.remindAfterHours) : null;
+      const escalateAt = level.escalateAfterHours ? after(level.escalateAfterHours) : null;
       const [task] = await Tasks.create(
         [
           {
@@ -322,11 +326,11 @@ export class WorkflowService {
       session,
     );
     // The daily digest of this company, at 08:00 in its time zone.
-    const cfg = await this.cfgFor('/');
+    const company = await this.cfgFor('/');
     await this.jobs.ensure(
       'digest',
       'daily',
-      nextRun(now, 'day', '08:00', cfg.tenant.timezone ?? 'UTC'),
+      nextRun(now, 'day', '08:00', company.tenant.timezone ?? 'UTC'),
     );
   }
 
@@ -435,10 +439,14 @@ export class WorkflowService {
     if (action.requesterOnly && record.createdBy !== userId) {
       throw AppError.forbidden('Only the person who created this can do that');
     }
-    if (action.roleIds?.length) {
+    if (action.roleIds?.length || action.roleKeys?.length) {
       const roles = await this.directory.roles(userId);
       const held = roles.idsAt(record.orgPath);
-      if (!action.roleIds.some((r) => held.has(r))) {
+      const keys = roles.keysAt(record.orgPath);
+      if (
+        !(action.roleIds ?? []).some((r) => held.has(r)) &&
+        !(action.roleKeys ?? []).some((k) => keys.has(k))
+      ) {
         throw AppError.forbidden('Your role cannot do this');
       }
     }

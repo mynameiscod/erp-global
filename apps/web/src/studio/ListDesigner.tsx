@@ -5,6 +5,7 @@ import { SYSTEM_COLUMNS, type FieldDef, type ListView } from '@erp/metadata';
 import { useAuth } from '../auth/AuthContext';
 import { useConfigActions, useLabel } from '../config/hooks';
 import { ErrorAlert, Field } from '../components/ui';
+import { useInherited } from './packBase';
 import { useStudio } from './StudioContext';
 
 /** Choose and order the columns of an entity's list, and its default sort. */
@@ -13,10 +14,12 @@ export function ListDesigner({ entityKey, fields }: { entityKey: string; fields:
   const label = useLabel();
   const { can } = useAuth();
   const { layer, scope } = useStudio();
+  const { below } = useInherited();
   const { putItem } = useConfigActions();
   const active = fields.filter((f) => !f.archived);
   const initial = (): ListView =>
-    layer.listViews.find((v) => v.entity === entityKey) ?? {
+    layer.listViews.find((v) => v.entity === entityKey) ??
+    below.listViews.find((v) => v.entity === entityKey) ?? {
       entity: entityKey,
       columns: ['number', ...active.slice(0, 5).map((f) => f.key)],
       sort: { field: 'createdAt', dir: 'desc' },

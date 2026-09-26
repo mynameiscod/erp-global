@@ -321,6 +321,57 @@ describe('config-service', () => {
     expect(counterB.body.error.code).toBe('NOT_FOUND');
   });
 
+  it('saves the company taxes, working calendar and identifier types in the draft', async () => {
+    const tid = 'tTax';
+    const taxes = {
+      components: [{ key: 'vat', label: { en: 'VAT' } }],
+      categories: [{ key: 'std', label: { en: 'Standard' }, rate: 5 }],
+      rules: [{ key: 'all', label: { en: 'All sales' }, split: [{ component: 'vat', share: 1 }] }],
+      defaultCategory: 'std',
+    };
+    await http()
+      .put('/api/v1/config/draft/taxes')
+      .set('authorization', admin(tid))
+      .send({ ...taxes, categories: [{ key: 'std', label: {}, rate: 500 }] })
+      .expect(400);
+    const saved = await http()
+      .put('/api/v1/config/draft/taxes')
+      .set('authorization', admin(tid))
+      .send(taxes)
+      .expect(200);
+    expect(saved.body.config.company.taxes.defaultCategory).toBe('std');
+    expect(saved.body.changes).toContain('Changed taxes');
+    const cal = await http()
+      .put('/api/v1/config/draft/calendar')
+      .set('authorization', admin(tid))
+      .send({ weekend: [5, 6], holidays: [{ date: '2026-12-02', label: { en: 'National Day' } }] })
+      .expect(200);
+    expect(cal.body.config.company.calendar.weekend).toEqual([5, 6]);
+    await http()
+      .put('/api/v1/config/draft/identifier-types/trn')
+      .set('authorization', admin(tid))
+      .send({ key: 'trn', label: { en: 'TRN' }, pattern: '[0-9]{15}', example: '100000000000003' })
+      .expect(200);
+    const preview = await http()
+      .get('/api/v1/config/effective?source=draft')
+      .set('authorization', admin(tid))
+      .expect(200);
+    expect(preview.body.taxes.rules[0].key).toBe('all');
+    expect(preview.body.calendar.holidays).toHaveLength(1);
+    expect(preview.body.identifierTypes.map((i: { key: string }) => i.key)).toEqual(['trn']);
+    await http()
+      .put('/api/v1/config/draft/taxes')
+      .set('authorization', branchAdmin)
+      .send(taxes)
+      .expect(403);
+    const cleared = await http()
+      .put('/api/v1/config/draft/calendar')
+      .set('authorization', admin(tid))
+      .send({})
+      .expect(200);
+    expect(cleared.body.config.company.calendar).toBeUndefined();
+  });
+
   it('requires config permissions for the studio', async () => {
     const viewer = auth('tA', [{ ou: ROOT, path: units[ROOT].path, p: ['org.unit.read'] }]);
     await http().get('/api/v1/config/draft').set('authorization', viewer).expect(403);

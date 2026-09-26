@@ -8,6 +8,7 @@ import type { OrgUnitDto, RoleDto, UserDto } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { useCurrentTenant } from '../components/AppLayout';
 import { PageHeader } from '../components/ui';
+import type { PackDto } from './PacksPage';
 import { formatCurrency, formatDate, formatNumber } from '../lib/format';
 
 function Stat({
@@ -56,6 +57,12 @@ export function DashboardPage() {
     enabled: can('access.role.read'),
   });
 
+  const packs = useQuery({
+    queryKey: ['packs'],
+    queryFn: () => api<PackDto[]>('/packs'),
+    enabled: can('packs.manage'),
+  });
+
   const countryName = tenant
     ? (new Intl.DisplayNames([i18n.language], { type: 'region' }).of(tenant.countryCode) ??
       tenant.countryCode)
@@ -73,6 +80,15 @@ export function DashboardPage() {
     },
     { done: (users.data?.total ?? 0) > 1, label: t('dashboard.stepUsers'), to: '/users' },
     { done: !!user?.mfaEnabled, label: t('dashboard.stepMfa'), to: '/account' },
+    ...(can('packs.manage')
+      ? [
+          {
+            done: !!packs.data?.some((p) => p.published),
+            label: t('packs.setupStep'),
+            to: '/packs',
+          },
+        ]
+      : []),
   ];
 
   return (

@@ -1,7 +1,9 @@
 import { compileFormula, FormulaError, formulaFieldKeys } from './formula';
 import { pickText } from './i18n';
+import { checkIdentifier } from './identifiers';
+import { computeTaxes, type TaxContext } from './tax';
 import {
-  COMPUTED_TYPES,
+  isCalculated,
   TABLE_MAX_ROWS,
   type EffectiveConfig,
   type EntityDef,
@@ -16,7 +18,10 @@ export interface RecordIssue {
 }
 
 export interface RecordContext {
-  cfg: Pick<EffectiveConfig, 'picklists'>;
+  cfg: Pick<EffectiveConfig, 'picklists'> &
+    Partial<Pick<EffectiveConfig, 'identifierTypes' | 'taxes'>>;
+  /** Where the sale happens, for the tax engine (resolved by the server). */
+  taxContext?: TaxContext;
   /** Used for currency fields without a fixed currency. */
   companyCurrency: string;
   now?: Date;
@@ -65,6 +70,13 @@ export function normalizeValue(f: FieldDef, v: unknown, ctx: RecordContext): Res
       if (f.minLength && s.length < f.minLength) return fail(`At least ${f.minLength} characters`);
       if (f.pattern && !new RegExp(f.pattern).test(s))
         return fail('Does not match the required format');
+      const idType = f.identifier
+        ? ctx.cfg.identifierTypes?.find((t) => t.key === f.identifier)
+        : undefined;
+      if (idType) {
+        const r = checkIdentifier(idType, s);
+        return 'error' in r ? fail(r.error) : ok(r.value);
+      }
       return ok(s);
     }
     case 'integer': {
@@ -185,13 +197,13 @@ function normalizeRows(f: FieldDef, v: unknown, ctx: RecordContext): Result {
       if (key.startsWith('_')) continue;
       const c = columns.get(key);
       if (!c) return fail(`${where}: unknown column "${key}"`);
-      if (COMPUTED_TYPES.has(c.type) || c.archived || isEmpty(value)) continue;
+      if (isCalculated(c) || c.archived || isEmpty(value)) continue;
       const r = normalizeValue(c, value, ctx);
       if (!r.ok) return fail(`${where}, ${pickText(c.label, 'en')}: ${r.message}`);
       row[key] = r.value;
     }
     for (const c of columns.values()) {
-      if (c.required && !c.archived && !COMPUTED_TYPES.has(c.type) && isEmpty(row[c.key]))
+      if (c.required && !c.archived && !isCalculated(c) && isEmpty(row[c.key]))
         return fail(`${where}: ${pickText(c.label, 'en')} is required`);
     }
     computeFormulas(rowEntity, row, ctx.now);
@@ -273,12 +285,7 @@ export function validateRecord(
 
   if (!existing) {
     for (const f of entity.fields) {
-      if (
-        !f.archived &&
-        !COMPUTED_TYPES.has(f.type) &&
-        f.default !== undefined &&
-        !(f.key in input)
-      ) {
+      if (!f.archived && !isCalculated(f) && f.default !== undefined && !(f.key in input)) {
         const r = normalizeValue(f, f.default, ctx);
         if (r.ok) data[f.key] = r.value;
       }
@@ -291,7 +298,7 @@ export function validateRecord(
       issues.push({ field: key, message: 'Unknown field' });
       continue;
     }
-    if (COMPUTED_TYPES.has(f.type)) {
+    if (isCalculated(f)) {
       if (!isEmpty(value)) issues.push({ field: key, message: 'Calculated automatically' });
       continue;
     }
@@ -309,12 +316,16 @@ export function validateRecord(
   }
 
   for (const f of entity.fields) {
-    if (f.required && !f.archived && !COMPUTED_TYPES.has(f.type) && isEmpty(data[f.key])) {
+    if (f.required && !f.archived && !isCalculated(f) && isEmpty(data[f.key])) {
       if (!issues.some((i) => i.field === f.key))
         issues.push({ field: f.key, message: 'Required' });
     }
   }
 
-  if (!issues.length) computeFormulas(entity, data, ctx.now);
+  if (!issues.length) {
+    // Taxes first, so record formulas can use the totals.
+    if (entity.tax) computeTaxes(entity, data, ctx.cfg.taxes, ctx.taxContext ?? {});
+    computeFormulas(entity, data, ctx.now);
+  }
   return { data, issues };
 }

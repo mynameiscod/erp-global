@@ -48,6 +48,7 @@ describe('api-gateway', () => {
       'notification',
       'document',
       'reporting',
+      'pack',
     ];
     const ups = await Promise.all(names.map(echoServer));
     servers.push(...ups.map((u) => u.server));
@@ -69,6 +70,7 @@ describe('api-gateway', () => {
       NOTIFICATION_SERVICE_URL: url.notification,
       DOCUMENT_SERVICE_URL: url.document,
       REPORTING_SERVICE_URL: url.reporting,
+      PACK_SERVICE_URL: url.pack,
     });
     gateway = createGateway(env);
   });
@@ -89,6 +91,7 @@ describe('api-gateway', () => {
       ['/api/v1/config/effective', 'config'],
       ['/api/v1/records/student', 'records'],
       ['/api/v1/files/abc', 'files'],
+      ['/api/v1/packs', 'pack'],
     ];
     for (const [path, service] of cases) {
       const res = await request(gateway).get(path).set('authorization', token()).expect(200);

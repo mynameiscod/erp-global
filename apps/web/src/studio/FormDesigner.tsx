@@ -6,6 +6,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useConfigActions, useLabel } from '../config/hooks';
 import { LocalizedInput } from '../config/LocalizedInput';
 import { ErrorAlert } from '../components/ui';
+import { useInherited } from './packBase';
 import { useStudio } from './StudioContext';
 
 const UNPLACED = '__unplaced__';
@@ -19,10 +20,14 @@ export function FormDesigner({ entityKey, fields }: { entityKey: string; fields:
   const label = useLabel();
   const { can } = useAuth();
   const { layer, scope } = useStudio();
+  const { below } = useInherited();
   const { putItem } = useConfigActions();
   const active = fields.filter((f) => !f.archived);
   const initial = (): FormSection[] =>
-    layer.forms.find((f) => f.entity === entityKey)?.sections ?? [
+    (
+      layer.forms.find((f) => f.entity === entityKey) ??
+      below.forms.find((f) => f.entity === entityKey)
+    )?.sections ?? [
       {
         key: 'main',
         label: { en: 'Details', hi: 'विवरण', ar: 'التفاصيل' },

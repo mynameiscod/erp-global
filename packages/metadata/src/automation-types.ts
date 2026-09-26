@@ -18,7 +18,8 @@ export interface WorkflowState {
 
 /** Who approves. Roles are found at the record's org unit or the nearest unit above it. */
 export type ApproverSpec =
-  | { type: 'role'; roleId: string }
+  /** A role by id, or by key (a pack's role, whose id is known only once installed). */
+  | { type: 'role'; roleId?: string; roleKey?: string }
   /** The requester's manager ("Reports to"). */
   | { type: 'manager' }
   /** The head of the record's org unit, or of the nearest unit above that has one. */
@@ -57,6 +58,8 @@ export interface WorkflowAction {
   to: string;
   /** Only holders of these roles (ids); empty means anyone who may edit the record. */
   roleIds?: string[];
+  /** The same, by role key (used by packs). */
+  roleKeys?: string[];
   /** Only the person who created the record, e.g. Submit or Cancel. */
   requesterOnly?: boolean;
   condition?: string;
@@ -106,7 +109,8 @@ export type Recipient =
   | { type: 'creator' }
   | { type: 'manager' }
   | { type: 'field'; field: string }
-  | { type: 'role'; roleId: string }
+  /** A role by id, or by key (a pack's role, whose id is known only once installed). */
+  | { type: 'role'; roleId?: string; roleKey?: string }
   | { type: 'users'; userIds: string[] };
 
 export const CHANNELS = ['inapp', 'email', 'whatsapp', 'push'] as const;

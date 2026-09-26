@@ -118,7 +118,8 @@ function RowsView({
           ? (a: unknown, b: unknown) => Number(a ?? 0) - Number(b ?? 0)
           : undefined,
         onCellClicked: onOpenRecord
-          ? (p) => p.data && onOpenRecord(String(p.data.__id))
+          ? // Line-item reports number rows `<record id>:<line>`; open the record.
+            (p) => p.data && onOpenRecord(String(p.data.__id).split(':')[0])
           : undefined,
         cellClass: onOpenRecord ? 'cursor-pointer' : undefined,
       })),

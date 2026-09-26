@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Button, Form, InputGroup } from 'react-bootstrap';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -11,6 +12,7 @@ import {
 import { api } from '../api/client';
 import type { RoleDto } from '../api/types';
 import { useLabel } from '../config/hooks';
+import { useStudio } from './StudioContext';
 
 /** Checks a condition or value formula against the entity's fields; returns an error or null. */
 export function formulaProblem(
@@ -73,6 +75,43 @@ export function useRoles() {
   return useQuery({ queryKey: ['roles'], queryFn: () => api<RoleDto[]>('/access/roles') });
 }
 
+/**
+ * Roles to choose from: the company's roles, plus the roles installed packs bring (known by
+ * key; the role itself is created when the pack is published). `value` is a role id, or
+ * `key:<roleKey>` for a pack role.
+ */
+export function useRoleChoices() {
+  const roles = useRoles();
+  const { draft } = useStudio();
+  const label = useLabel();
+  return useMemo(() => {
+    const byKey = new Map<string, { name: string; id?: string }>();
+    for (const p of draft.config.packs ?? [])
+      for (const r of p.manifest.roles ?? []) byKey.set(r.key, { name: label(r.name) || r.key });
+    for (const r of roles.data ?? []) if (r.key) byKey.set(r.key, { name: r.name, id: r.id });
+    const options = [
+      ...(roles.data ?? []).map((r) => ({ value: r.id, name: r.name, pack: false })),
+      ...[...byKey]
+        .filter(([, v]) => !v.id)
+        .map(([k, v]) => ({ value: `key:${k}`, name: v.name, pack: true })),
+    ];
+    /** The role's name for display: by id, or by key (a pack role), falling back to the key. */
+    const nameOf = (ref: { roleId?: string; roleKey?: string }) =>
+      ref.roleId
+        ? (roles.data?.find((r) => r.id === ref.roleId)?.name ?? ref.roleId)
+        : ref.roleKey
+          ? (byKey.get(ref.roleKey)?.name ?? ref.roleKey)
+          : '';
+    return { options, nameOf, byKey, loading: roles.isLoading };
+  }, [roles.data, roles.isLoading, draft.config.packs, label]);
+}
+
+/** A role reference as a select value, and back. */
+export const roleValue = (s: { roleId?: string; roleKey?: string }) =>
+  s.roleId ?? (s.roleKey ? `key:${s.roleKey}` : '');
+export const roleRef = (v: string): { roleId?: string; roleKey?: string } =>
+  v.startsWith('key:') ? { roleKey: v.slice(4) } : { roleId: v };
+
 type Spec = ApproverSpec | Recipient;
 type SpecType = Spec['type'];
 
@@ -93,7 +132,7 @@ export function PeopleEditor({
 }) {
   const { t } = useTranslation();
   const label = useLabel();
-  const roles = useRoles();
+  const roles = useRoleChoices();
   const userFields = (entity?.fields ?? []).filter(
     (f) => (f.type === 'lookup' || f.type === 'lookup_many') && f.target === 'user',
   );
@@ -101,7 +140,7 @@ export function PeopleEditor({
   const blank = (type: SpecType): Spec => {
     switch (type) {
       case 'role':
-        return { type, roleId: roles.data?.[0]?.id ?? '' };
+        return { type, ...roleRef(roles.options[0]?.value ?? '') };
       case 'users':
         return { type, userIds: [] };
       case 'field':
@@ -127,12 +166,19 @@ export function PeopleEditor({
           </Form.Select>
           {s.type === 'role' && (
             <Form.Select
-              value={s.roleId}
-              onChange={(e) => set(i, { ...s, roleId: e.target.value })}
+              value={roleValue(s)}
+              onChange={(e) => set(i, { type: 'role', ...roleRef(e.target.value) })}
             >
-              {roles.data?.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
+              {!roles.options.some((o) => o.value === roleValue(s)) && (
+                <option value={roleValue(s)}>
+                  {s.roleKey && !s.roleId
+                    ? t('studio.roles.packRole', { name: roles.nameOf(s) })
+                    : roles.nameOf(s)}
+                </option>
+              )}
+              {roles.options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.pack ? t('studio.roles.packRole', { name: o.name }) : o.name}
                 </option>
               ))}
             </Form.Select>

@@ -26,6 +26,8 @@ export interface Viewer {
   lang: string;
   /** Ids of the roles the viewer holds anywhere. */
   roleIds: string[];
+  /** Keys of those roles (pack roles have one). */
+  roleKeys?: string[];
 }
 
 export type ReportKind = 'company' | 'mine' | 'shared';
@@ -55,19 +57,31 @@ export class ReportCatalog {
   async viewer(): Promise<Viewer> {
     const ctx = requireContext();
     if (ctx.actor?.type !== 'user') throw AppError.forbidden();
+    const roles = await this.rolesOf(ctx.actor.id);
+    return { userId: ctx.actor.id, acl: ctx.acl ?? [], lang: ctx.lang ?? 'en', ...roles };
+  }
+
+  async rolesOf(userId: string): Promise<{ roleIds: string[]; roleKeys: string[] }> {
+    const roles = await this.clients.access.get<{ roleId: string; key: string | null }[]>(
+      `/internal/access/users/${userId}/roles`,
+    );
     return {
-      userId: ctx.actor.id,
-      acl: ctx.acl ?? [],
-      lang: ctx.lang ?? 'en',
-      roleIds: await this.roleIdsOf(ctx.actor.id),
+      roleIds: [...new Set(roles.map((r) => r.roleId))],
+      roleKeys: [...new Set(roles.flatMap((r) => (r.key ? [r.key] : [])))],
     };
   }
 
   async roleIdsOf(userId: string): Promise<string[]> {
-    const roles = await this.clients.access.get<{ roleId: string }[]>(
-      `/internal/access/users/${userId}/roles`,
+    return (await this.rolesOf(userId)).roleIds;
+  }
+
+  /** Does the viewer hold one of these roles (by id or key)? Both empty: everyone. */
+  holdsAny(v: Viewer, ids: string[] | undefined, keys: string[] | undefined): boolean {
+    if (!ids?.length && !keys?.length) return true;
+    return (
+      (ids ?? []).some((r) => v.roleIds.includes(r)) ||
+      (keys ?? []).some((k) => (v.roleKeys ?? []).includes(k))
     );
-    return [...new Set(roles.map((r) => r.roleId))];
   }
 
   config(): Promise<EffectiveConfigResponse> {
@@ -83,11 +97,8 @@ export class ReportCatalog {
     const claims = { acl: v.acl };
     if (!hasPermission(claims, recordPermission(e.entity, 'read'))) return false;
     if (e.kind === 'company') {
-      const roles = e.def.roleIds ?? [];
       return (
-        !roles.length ||
-        roles.some((r) => v.roleIds.includes(r)) ||
-        hasPermission(claims, 'config.manage')
+        this.holdsAny(v, e.def.roleIds, e.def.roleKeys) || hasPermission(claims, 'config.manage')
       );
     }
     return e.ownerId === v.userId || (e.sharedRoleIds ?? []).some((r) => v.roleIds.includes(r));

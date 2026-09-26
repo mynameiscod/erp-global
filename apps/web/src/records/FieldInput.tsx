@@ -3,11 +3,17 @@ import { Badge, Button, Form, Image, InputGroup, Spinner } from 'react-bootstrap
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { Page } from '@erp/contracts';
-import type { CurrencyValue, EffectiveConfig, FieldDef } from '@erp/metadata';
+import {
+  checkIdentifier,
+  type CurrencyValue,
+  type EffectiveConfig,
+  type FieldDef,
+} from '@erp/metadata';
 import { api, apiUpload } from '../api/client';
 import type { OrgUnitDto, UserDto } from '../api/types';
 import { useLabel } from '../config/hooks';
 import { ErrorAlert } from '../components/ui';
+import { displayValue } from './display';
 import { TableInput } from './TableInput';
 
 export interface FieldInputProps {
@@ -217,6 +223,55 @@ function FileInput({ field, value, onChange, id }: FieldInputProps) {
   );
 }
 
+/**
+ * A text field validated as an identifier type from a Country Pack (GSTIN, PAN…):
+ * upper-cased as typed when the type says so, checked (pattern and check digit) on blur.
+ */
+function IdentifierInput({ field, value, onChange, cfg, invalid, id }: FieldInputProps) {
+  const { t } = useTranslation();
+  const label = useLabel();
+  const [touched, setTouched] = useState(false);
+  const type = (cfg.identifierTypes ?? []).find((x) => x.key === field.identifier);
+  const str = typeof value === 'string' ? value : '';
+  let problem: string | undefined;
+  if (type && touched && str.trim()) {
+    const r = checkIdentifier(type, str);
+    if ('error' in r) {
+      const name = label(type.label);
+      // Same check without the check digit tells a wrong format from a wrong check digit.
+      const formatOk = !('error' in checkIdentifier({ ...type, checksum: undefined }, str));
+      problem = formatOk
+        ? t('records.identifier.checkDigit', { name })
+        : type.example
+          ? t('records.identifier.invalidExample', { name, example: type.example })
+          : t('records.identifier.invalid', { name });
+    }
+  }
+  return (
+    <>
+      <Form.Control
+        id={id}
+        type="text"
+        dir="ltr"
+        className="font-monospace"
+        autoComplete="off"
+        spellCheck={false}
+        maxLength={field.maxLength ?? 500}
+        placeholder={type?.example}
+        value={str}
+        isInvalid={invalid || !!problem}
+        onBlur={() => setTouched(true)}
+        onChange={(e) => onChange(type?.uppercase ? e.target.value.toUpperCase() : e.target.value)}
+      />
+      {problem && !invalid && (
+        <Form.Control.Feedback type="invalid" className="d-block">
+          {problem}
+        </Form.Control.Feedback>
+      )}
+    </>
+  );
+}
+
 /** datetime-local works in local time; values are stored as UTC ISO strings. */
 function toLocalInput(iso: string | undefined): string {
   if (!iso) return '';
@@ -229,7 +284,7 @@ function toLocalInput(iso: string | undefined): string {
 export function FieldInput(props: FieldInputProps) {
   const { field: f, value, onChange, cfg, currency, invalid, id } = props;
   const label = useLabel();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const str = value === undefined || value === null ? '' : String(value);
   const text = (type: string, extra: object = {}) => (
     <Form.Control
@@ -242,8 +297,21 @@ export function FieldInput(props: FieldInputProps) {
     />
   );
 
+  // Fields the server fills (e.g. tax totals) are shown, never edited.
+  if (f.calculated && f.type !== 'table')
+    return (
+      <Form.Control
+        id={id}
+        plaintext
+        readOnly
+        value={displayValue(f, value, { cfg, locale: i18n.language, label }) || '—'}
+        className="text-body-secondary"
+      />
+    );
+
   switch (f.type) {
     case 'text':
+      if (f.identifier) return <IdentifierInput {...props} />;
       return text('text', { maxLength: f.maxLength ?? 500 });
     case 'longtext':
       return text('text', { as: 'textarea', rows: 3, maxLength: f.maxLength ?? 10000 });

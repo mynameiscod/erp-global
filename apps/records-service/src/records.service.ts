@@ -28,6 +28,7 @@ import {
   type RecordIssue,
   type RuleDef,
   type RuleEnv,
+  type TaxContext,
 } from '@erp/metadata';
 import {
   AppError,
@@ -182,6 +183,126 @@ export class RecordsService {
       status: extra.status,
       now: new Date(),
     };
+  }
+
+  /**
+   * Where a sale happens, for the tax engine. Each input names a field (`place_of_supply`),
+   * a linked record's field (`customer.state`) or the org unit's (`unit.state`, taken from
+   * the nearest unit up the tree that has it).
+   */
+  private async taxContext(
+    entity: EntityDef,
+    data: RecordData,
+    orgUnitId: string | null | undefined,
+    cfg: EffectiveConfigResponse,
+  ): Promise<TaxContext | undefined> {
+    const t = entity.tax;
+    if (!t) return undefined;
+    let chain: { custom?: Record<string, unknown> }[] | undefined;
+    const linked = new Map<string, RecordData | null>();
+    const read = async (source: string | undefined): Promise<unknown> => {
+      if (!source) return undefined;
+      const [first, second] = source.split('.');
+      if (first === 'unit') {
+        if (!orgUnitId) return undefined;
+        chain ??= await this.clients.org
+          .get<{ custom?: Record<string, unknown> }[]>(`/internal/org/units/${orgUnitId}/ancestors`)
+          .catch(() => []);
+        for (const u of [...chain].reverse()) {
+          const v = u.custom?.[second];
+          if (v !== undefined && v !== null && v !== '') return v;
+        }
+        return undefined;
+      }
+      const value = data[first];
+      if (second === undefined) return value;
+      const f = entity.fields.find((x) => x.key === first);
+      if (f?.type !== 'lookup' || !f.target || typeof value !== 'string' || !ID_RE.test(value))
+        return undefined;
+      if (!linked.has(value)) {
+        const doc = await (
+          await this.records()
+        )
+          .findOne({ _id: value, entity: f.target, deletedAt: null }, { data: 1 })
+          .lean<Pick<RecordDoc, 'data'>>();
+        linked.set(value, doc?.data ?? null);
+      }
+      return linked.get(value)?.[second];
+    };
+    const text = (v: unknown) => (v === undefined || v === null ? null : String(v));
+    return {
+      sellerRegion: text(await read(t.sellerRegion)),
+      buyerRegion: text(await read(t.buyerRegion)),
+      buyerCountry: text(await read(t.buyerCountry)),
+      companyCountry: cfg.tenant.countryCode,
+      buyerRegistered: !isEmpty(await read(t.buyerRegistered)),
+      reverseCharge: (await read(t.reverseCharge)) === true,
+    };
+  }
+
+  /**
+   * Empty fields and line columns with `defaultFrom` take the value from the linked record,
+   * e.g. a line's rate from the chosen item's price. Values the user typed are kept.
+   */
+  private async fillDefaults(
+    entity: EntityDef,
+    input: RecordData,
+    cfg: EffectiveConfigResponse,
+  ): Promise<RecordData> {
+    const wanted = (fields: FieldDef[]) => fields.some((f) => f.defaultFrom);
+    const tables = entity.fields.filter((f) => f.type === 'table' && wanted(f.columns ?? []));
+    if (!wanted(entity.fields) && !tables.length) return input;
+    const Records = await this.records();
+    const cache = new Map<string, RecordData | null>();
+    const linked = async (lookup: FieldDef | undefined, id: unknown) => {
+      if (lookup?.type !== 'lookup' || !lookup.target || typeof id !== 'string' || !ID_RE.test(id))
+        return undefined;
+      const key = `${lookup.target}:${id}`;
+      if (!cache.has(key)) {
+        const doc = await Records.findOne(
+          { _id: id, entity: lookup.target, deletedAt: null },
+          { data: 1 },
+        ).lean<Pick<RecordDoc, 'data'>>();
+        cache.set(key, doc ? fromStorage(findEntity(cfg, lookup.target), doc.data) : null);
+      }
+      return cache.get(key) ?? undefined;
+    };
+    const fill = async (
+      fields: FieldDef[],
+      values: RecordData,
+      siblings: FieldDef[],
+      outer?: RecordData,
+    ) => {
+      for (const f of fields) {
+        if (!f.defaultFrom || !isEmpty(values[f.key])) continue;
+        const [lk, fk] = f.defaultFrom.split('.');
+        const lookup = siblings.find((x) => x.key === lk);
+        const source = values[lk] !== undefined ? values[lk] : outer?.[lk];
+        let v = (await linked(lookup, source))?.[fk];
+        // A price (currency) copied into a plain number column keeps just its amount.
+        if (
+          ['integer', 'decimal', 'percent'].includes(f.type) &&
+          v &&
+          typeof v === 'object' &&
+          'amount' in v
+        )
+          v = Number((v as { amount: unknown }).amount);
+        if (!isEmpty(v)) values[f.key] = v;
+      }
+    };
+    const out: RecordData = { ...input };
+    await fill(entity.fields, out, entity.fields);
+    for (const t of tables) {
+      if (!Array.isArray(out[t.key])) continue;
+      out[t.key] = await Promise.all(
+        (out[t.key] as RecordData[]).map(async (row) => {
+          const r = { ...row };
+          await fill(t.columns ?? [], r, [...(t.columns ?? []), ...entity.fields], out);
+          return r;
+        }),
+      );
+    }
+    return out;
   }
 
   private toDto(doc: RecordDoc, entity?: EntityDef) {
@@ -433,9 +554,11 @@ export class RecordsService {
       env = await this.ruleEnv(rules, { status, orgUnitId: unit?.id ?? null });
       ({ data: input, effects } = applyFieldRules(entity, rules, input, env));
     }
+    input = await this.fillDefaults(entity, input, cfg);
     const { data, issues } = validateRecord(entity, input, {
       cfg,
       companyCurrency: cfg.tenant.currency,
+      taxContext: await this.taxContext(entity, input, unit?.id, cfg),
     });
     if (rules.length) issues.push(...checkRules(rules, data, effects, env, requireContext().lang));
     if (issues.length) throw invalid(issues);
@@ -533,10 +656,20 @@ export class RecordsService {
       });
       ({ data: input, effects } = applyFieldRules(entity, rules, { ...before, ...body.data }, env));
     }
+    input = await this.fillDefaults(entity, input, cfg);
     const { data, issues } = validateRecord(
       entity,
       input,
-      { cfg, companyCurrency: cfg.tenant.currency },
+      {
+        cfg,
+        companyCurrency: cfg.tenant.currency,
+        taxContext: await this.taxContext(
+          entity,
+          { ...before, ...input },
+          unit?.id ?? doc.orgUnitId,
+          cfg,
+        ),
+      },
       before,
     );
     if (rules.length) issues.push(...checkRules(rules, data, effects, env, requireContext().lang));
@@ -708,6 +841,47 @@ export class RecordsService {
       );
     });
     return this.internalGet(key, id);
+  }
+
+  /**
+   * Deletes the records created with a source key starting with `prefix`, e.g. a pack's
+   * sample data (`pack:industry.education:`). Like a user's delete: soft, audited.
+   */
+  async internalRemoveBySource(prefix: string) {
+    const Records = await this.records();
+    const docs = await Records.find({
+      sourceKey: { $regex: `^${escapeRegex(prefix)}` },
+      deletedAt: null,
+    }).lean<RecordDoc[]>();
+    const Uniques = await this.uniques();
+    for (const doc of docs) {
+      await this.conn.transaction(async (session) => {
+        await Records.updateOne(
+          { _id: doc._id },
+          // The source key is freed so the samples can be added again later.
+          {
+            $set: { deletedAt: new Date(), updatedBy: requireContext().actor!.id },
+            $unset: { sourceKey: 1 },
+          },
+          { session },
+        );
+        await Uniques.deleteMany({ recordId: String(doc._id) }, { session });
+        await this.outbox.record(
+          EventTypes.RecordDeleted,
+          {
+            entity: doc.entity,
+            recordId: String(doc._id),
+            number: doc.number ?? null,
+            orgUnitId: doc.orgUnitId,
+            orgPath: doc.orgPath,
+            status: doc.status ?? null,
+            depth: 1,
+          },
+          { session },
+        );
+      });
+    }
+    return { deleted: docs.length };
   }
 
   /** Keeps record paths in step with org moves. */

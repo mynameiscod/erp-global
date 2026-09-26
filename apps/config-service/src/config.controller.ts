@@ -65,6 +65,20 @@ export class ConfigController {
     return this.config.putSettings(body);
   }
 
+  /** The company's tax data (merged with the packs' by key). An empty body clears it. */
+  @Put('draft/taxes')
+  @RequirePermissions('config.manage')
+  taxes(@Body() body: unknown) {
+    return this.config.putCompanyPart('taxes', body);
+  }
+
+  /** The company's working week, hours and holidays (added to the packs'). */
+  @Put('draft/calendar')
+  @RequirePermissions('config.manage')
+  calendar(@Body() body: unknown) {
+    return this.config.putCompanyPart('calendar', body);
+  }
+
   @Post('draft/discard')
   @HttpCode(200)
   @RequirePermissions('config.manage')
@@ -143,6 +157,11 @@ const nextNumberSchema = z.object({
   date: z.string().datetime().optional(),
 });
 
+const putPackSchema = z.object({
+  manifest: z.unknown(),
+  resolutions: z.record(z.string().max(200), z.enum(['mine', 'pack'])).optional(),
+});
+
 @Controller('internal/config')
 @Internal()
 export class InternalConfigController {
@@ -161,6 +180,33 @@ export class InternalConfigController {
   @Get('entities')
   entities() {
     return this.config.publishedEntities();
+  }
+
+  @Get('packs')
+  packs() {
+    return this.config.packs();
+  }
+
+  /** The packs in the live configuration, with their manifests (pack-service: roles, samples). */
+  @Get('packs/published')
+  publishedPacks() {
+    return this.config.publishedPacks();
+  }
+
+  @Post('packs/preview')
+  @HttpCode(200)
+  previewPack(@Body() body: unknown) {
+    return this.config.previewPack(body);
+  }
+
+  @Put('packs')
+  putPack(@Body(new ZodPipe(putPackSchema)) body: z.infer<typeof putPackSchema>) {
+    return this.config.putPack(body.manifest, body.resolutions);
+  }
+
+  @Delete('packs/:id')
+  removePack(@Param('id') id: string) {
+    return this.config.removePack(id);
   }
 
   @Post('numbering/next')

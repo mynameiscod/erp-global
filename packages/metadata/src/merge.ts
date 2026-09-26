@@ -1,3 +1,6 @@
+import { mergeCalendars } from './identifiers';
+import { packLayers } from './packs';
+import { mergeTaxSetups, withTaxFields } from './tax';
 import { normalizeLayer } from './types';
 import type {
   ConfigLayer,
@@ -18,7 +21,11 @@ function mergeEntity(prev: EntityPatch | undefined, patch: EntityPatch): EntityP
   const fields = byKey(prev.fields, (f) => f.key);
   for (const f of patch.fields) fields.set(f.key, f);
   const { fields: _ignored, ...props } = patch;
-  return { ...prev, ...props, fields: [...fields.values()] };
+  const merged: EntityPatch = { ...prev, ...props, fields: [...fields.values()] };
+  // Tax settings merge key by key: an Industry Pack maps the lines, a Country Pack the regions.
+  if (prev.tax && patch.tax) merged.tax = { ...prev.tax, ...patch.tax };
+  if (prev.roles && patch.roles) merged.roles = [...new Set([...prev.roles, ...patch.roles])];
+  return merged;
 }
 
 /**
@@ -39,6 +46,9 @@ export function mergeLayers(layers: ConfigLayer[]): ConfigLayer {
   const printTemplates = new Map<string, ConfigLayer['printTemplates'][number]>();
   const reports = new Map<string, ConfigLayer['reports'][number]>();
   const dashboards = new Map<string, ConfigLayer['dashboards'][number]>();
+  const identifierTypes = new Map<string, ConfigLayer['identifierTypes'][number]>();
+  const taxes: ConfigLayer['taxes'][] = [];
+  const calendars: ConfigLayer['calendar'][] = [];
   let settings: ConfigSettings = {};
   for (const raw of layers) {
     const layer = normalizeLayer(raw);
@@ -56,6 +66,9 @@ export function mergeLayers(layers: ConfigLayer[]): ConfigLayer {
     for (const p of layer.printTemplates) printTemplates.set(p.key, p);
     for (const r of layer.reports) reports.set(r.key, r);
     for (const d of layer.dashboards) dashboards.set(d.key, d);
+    for (const i of layer.identifierTypes) identifierTypes.set(i.key, i);
+    taxes.push(layer.taxes);
+    calendars.push(layer.calendar);
     settings = { ...settings, ...(layer.settings ?? {}) };
   }
   return {
@@ -71,6 +84,9 @@ export function mergeLayers(layers: ConfigLayer[]): ConfigLayer {
     printTemplates: [...printTemplates.values()],
     reports: [...reports.values()],
     dashboards: [...dashboards.values()],
+    identifierTypes: [...identifierTypes.values()],
+    taxes: mergeTaxSetups(taxes),
+    calendar: mergeCalendars(calendars),
     settings,
   };
 }
@@ -93,7 +109,14 @@ export function layersFor(
   const overrides = pathIds(orgPath)
     .map((id) => config.orgUnits[id])
     .filter((l): l is NonNullable<typeof l> => !!l);
-  return [...base, config.company, ...overrides];
+  // Packs sit between the platform and the company, so the company's changes win.
+  return [
+    ...base,
+    ...packLayers(config.packs, config.company),
+    ...(config.retired ? [config.retired] : []),
+    config.company,
+    ...overrides,
+  ];
 }
 
 function isComplete(e: EntityPatch): e is EntityDef {
@@ -108,8 +131,9 @@ export function resolveEffective(
   const merged = mergeLayers(layersFor(base, config, opts.orgPath));
   return {
     ...merged,
-    // Incomplete entities are rejected at publish; drop any defensively.
-    entities: merged.entities.filter(isComplete),
+    // Incomplete entities are rejected at publish; drop any defensively. Entities with taxes
+    // get the fields the tax engine fills.
+    entities: merged.entities.filter(isComplete).map((e) => withTaxFields(e)),
     version: opts.version,
     settings: {
       ...merged.settings,

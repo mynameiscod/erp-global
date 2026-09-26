@@ -89,6 +89,11 @@ export class InternalOrgController {
     return this.org.undoBootstrap();
   }
 
+  @Get('root')
+  root() {
+    return this.org.internalRoot();
+  }
+
   @Post('units/batch')
   @HttpCode(200)
   batch(@Body(new ZodPipe(batchSchema)) body: z.infer<typeof batchSchema>) {

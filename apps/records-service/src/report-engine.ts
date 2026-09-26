@@ -227,7 +227,7 @@ class RunContext {
   private path(path: string): PathInfo {
     const hit = this.paths.get(path);
     if (hit) return hit;
-    const res = resolveReportPath(this.cfg.entities, this.report.entity, path);
+    const res = resolveReportPath(this.cfg.entities, this.report.entity, path, this.report.lines);
     if (typeof res === 'string') throw AppError.badRequest(res);
     const joins: string[] = [];
     let prefix = '';
@@ -253,9 +253,12 @@ class RunContext {
       joins.push(alias);
       prefix = `${alias}.`;
     });
-    const docPath = res.system
-      ? `${prefix}${SYSTEM_DOC_PATHS[res.system]}`
-      : `${prefix}data.${res.field!.key}${res.field!.type === 'currency' ? '.amount' : ''}`;
+    const money = res.field?.type === 'currency' ? '.amount' : '';
+    const docPath = res.line
+      ? `data.${res.line}.${res.field!.key}${money}`
+      : res.system
+        ? `${prefix}${SYSTEM_DOC_PATHS[res.system]}`
+        : `${prefix}data.${res.field!.key}${money}`;
     const info: PathInfo = {
       res,
       docPath,
@@ -446,15 +449,24 @@ class RunContext {
       ...this.filters().map((f) => ({ path: f.path, cond: this.condition(f) })),
       ...(this.req.params.drill ?? []).map((d, i) => ({ path: d.path, cond: drill[i] })),
     ];
+    // Conditions on line columns apply after the lines are unwound, one line at a time.
+    const onLines: Record<string, unknown>[] = [];
     for (const { path, cond } of conds) {
       if (!cond) continue;
-      (this.path(path).joins.length ? post : pre).push(cond);
+      const info = this.path(path);
+      (info.res.line ? onLines : info.joins.length ? post : pre).push(cond);
     }
     const aliases = new Set<string>();
     for (const p of [...conds.map((c) => c.path), ...extraPaths]) {
       for (const a of this.path(p).joins) aliases.add(a);
     }
     const stages: PipelineStage[] = [{ $match: pre.length ? { ...base, $and: pre } : base }];
+    if (this.report.lines) {
+      stages.push({
+        $unwind: { path: `$data.${this.report.lines}`, includeArrayIndex: '_line' },
+      } as PipelineStage);
+      if (onLines.length) stages.push({ $match: { $and: onLines } });
+    }
     stages.push(...this.joinStages(aliases));
     if (post.length) stages.push({ $match: { $and: post } });
     return stages;
@@ -515,6 +527,7 @@ class RunContext {
     sort._id = -1;
     const project: Record<string, unknown> = {};
     for (const c of columns) project[c.key] = `$${c.info.docPath}`;
+    if (this.report.lines) project._line = 1;
 
     const [docs, count] = await Promise.all([
       this.aggregate<Record<string, unknown>>(Records, [
@@ -533,7 +546,10 @@ class RunContext {
       kind: 'rows',
       columns: columns.map((c) => this.column(c.key, c.info, c.def.label)),
       rows: docs.map((d) => {
-        const row: Record<string, unknown> = { __id: String(d._id) };
+        // Line rows share their record's id; the line number keeps them apart.
+        const row: Record<string, unknown> = {
+          __id: this.report.lines ? `${String(d._id)}:${String(d._line)}` : String(d._id),
+        };
         for (const c of columns) {
           const v = plain(d[c.key]);
           row[c.key] = c.info.label ? labels.label(c.info.label, v) : v;

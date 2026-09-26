@@ -65,10 +65,8 @@ export class DashboardsService {
 
   private canSee(v: Viewer, e: DashboardEntry): boolean {
     if (e.kind === 'company') {
-      const roles = e.def.roleIds ?? [];
       return (
-        !roles.length ||
-        roles.some((r) => v.roleIds.includes(r)) ||
+        this.catalog.holdsAny(v, e.def.roleIds, e.def.roleKeys) ||
         hasPermission({ acl: v.acl }, 'config.manage')
       );
     }
@@ -114,7 +112,8 @@ export class DashboardsService {
         (e) =>
           e.home &&
           e.kind === 'company' &&
-          (e.def.roleIds ?? []).some((r) => v.roleIds.includes(r)),
+          !!(e.def.roleIds?.length || e.def.roleKeys?.length) &&
+          this.catalog.holdsAny(v, e.def.roleIds, e.def.roleKeys),
       ) ??
       all.find((e) => e.home) ??
       all[0];

@@ -26,6 +26,7 @@ const AuditPage = page(() => import('./pages/AuditPage'), 'AuditPage');
 const SettingsPage = page(() => import('./pages/SettingsPage'), 'SettingsPage');
 const AccountPage = page(() => import('./pages/AccountPage'), 'AccountPage');
 const TenantsPage = page(() => import('./pages/TenantsPage'), 'TenantsPage');
+const PacksPage = page(() => import('./pages/PacksPage'), 'PacksPage');
 const StudioPage = page(() => import('./studio/StudioPage'), 'StudioPage');
 const ApprovalsPage = page(() => import('./pages/ApprovalsPage'), 'ApprovalsPage');
 const NotificationsPage = page(() => import('./pages/NotificationsPage'), 'NotificationsPage');
@@ -119,6 +120,14 @@ export function App() {
             element={
               <RequirePermission perm="tenant.settings.read">
                 <SettingsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="packs"
+            element={
+              <RequirePermission perm="packs.manage">
+                <PacksPage />
               </RequirePermission>
             }
           />

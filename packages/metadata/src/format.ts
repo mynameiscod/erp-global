@@ -216,3 +216,157 @@ export function amountInWords(value: unknown, currency: string): string {
     minor && words.minor ? ` and ${integerInWords(minor, system)} ${words.minor}` : '';
   return `${n < 0 ? 'Minus ' : ''}${main}${minorText} Only`;
 }
+
+// ---- Hindi ----
+
+/** 0–99 in Hindi: each number has its own word. */
+const HI_BELOW_100 = [
+  'शून्य',
+  'एक',
+  'दो',
+  'तीन',
+  'चार',
+  'पाँच',
+  'छह',
+  'सात',
+  'आठ',
+  'नौ',
+  'दस',
+  'ग्यारह',
+  'बारह',
+  'तेरह',
+  'चौदह',
+  'पंद्रह',
+  'सोलह',
+  'सत्रह',
+  'अठारह',
+  'उन्नीस',
+  'बीस',
+  'इक्कीस',
+  'बाईस',
+  'तेईस',
+  'चौबीस',
+  'पच्चीस',
+  'छब्बीस',
+  'सत्ताईस',
+  'अट्ठाईस',
+  'उनतीस',
+  'तीस',
+  'इकतीस',
+  'बत्तीस',
+  'तैंतीस',
+  'चौंतीस',
+  'पैंतीस',
+  'छत्तीस',
+  'सैंतीस',
+  'अड़तीस',
+  'उनतालीस',
+  'चालीस',
+  'इकतालीस',
+  'बयालीस',
+  'तैंतालीस',
+  'चवालीस',
+  'पैंतालीस',
+  'छियालीस',
+  'सैंतालीस',
+  'अड़तालीस',
+  'उनचास',
+  'पचास',
+  'इक्यावन',
+  'बावन',
+  'तिरपन',
+  'चौवन',
+  'पचपन',
+  'छप्पन',
+  'सत्तावन',
+  'अट्ठावन',
+  'उनसठ',
+  'साठ',
+  'इकसठ',
+  'बासठ',
+  'तिरसठ',
+  'चौंसठ',
+  'पैंसठ',
+  'छियासठ',
+  'सड़सठ',
+  'अड़सठ',
+  'उनहत्तर',
+  'सत्तर',
+  'इकहत्तर',
+  'बहत्तर',
+  'तिहत्तर',
+  'चौहत्तर',
+  'पचहत्तर',
+  'छिहत्तर',
+  'सतहत्तर',
+  'अठहत्तर',
+  'उन्यासी',
+  'अस्सी',
+  'इक्यासी',
+  'बयासी',
+  'तिरासी',
+  'चौरासी',
+  'पचासी',
+  'छियासी',
+  'सत्तासी',
+  'अट्ठासी',
+  'नवासी',
+  'नब्बे',
+  'इक्यानबे',
+  'बानबे',
+  'तिरानबे',
+  'चौरानबे',
+  'पचानबे',
+  'छियानबे',
+  'सत्तानबे',
+  'अट्ठानबे',
+  'निन्यानबे',
+];
+
+function hindiInteger(value: number): string {
+  let n = Math.floor(Math.abs(value));
+  if (n === 0) return HI_BELOW_100[0];
+  const parts: string[] = [];
+  const scale = (size: number, name: string) => {
+    if (n >= size) {
+      const count = Math.floor(n / size);
+      parts.push(`${count >= 100 ? hindiInteger(count) : HI_BELOW_100[count]} ${name}`);
+      n %= size;
+    }
+  };
+  scale(1e7, 'करोड़');
+  scale(1e5, 'लाख');
+  scale(1e3, 'हज़ार');
+  scale(100, 'सौ');
+  if (n) parts.push(HI_BELOW_100[n]);
+  return parts.join(' ');
+}
+
+/** Currency names in Hindi for the currencies that use them. */
+const HI_CURRENCY: Record<string, { major: string; minor: string }> = {
+  INR: { major: 'रुपये', minor: 'पैसे' },
+  NPR: { major: 'रुपये', minor: 'पैसे' },
+  PKR: { major: 'रुपये', minor: 'पैसे' },
+};
+
+/** Languages amounts can be written in; others fall back to English. */
+export const WORDS_LANGUAGES = ['en', 'hi'];
+
+/**
+ * An amount in words in `lang` where the language is supported (English and Hindi),
+ * e.g. "रुपये बारह हज़ार पाँच सौ और पचास पैसे मात्र".
+ */
+export function amountInWordsIn(value: unknown, currency: string, lang: string): string {
+  const base = lang.split('-')[0];
+  const names = HI_CURRENCY[currency.toUpperCase()];
+  if (base !== 'hi' || !names) return amountInWords(value, currency);
+  const n = Number(
+    typeof value === 'object' && value ? (value as { amount?: unknown }).amount : value,
+  );
+  if (!Number.isFinite(n)) return '';
+  const totalMinor = Math.round(Math.abs(n) * 100);
+  const major = Math.floor(totalMinor / 100);
+  const minor = totalMinor % 100;
+  const minorText = minor ? ` और ${HI_BELOW_100[minor]} ${names.minor}` : '';
+  return `${n < 0 ? 'ऋण ' : ''}${names.major} ${hindiInteger(major)}${minorText} मात्र`;
+}

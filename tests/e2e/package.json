@@ -19,6 +19,8 @@
     "@erp/metadata": "workspace:*",
     "@erp/notification-service": "workspace:*",
     "@erp/org-service": "workspace:*",
+    "@erp/pack-service": "workspace:^",
+    "@erp/packs": "workspace:*",
     "@erp/records-service": "workspace:*",
     "@erp/reference-data-service": "workspace:*",
     "@erp/reporting-service": "workspace:^",

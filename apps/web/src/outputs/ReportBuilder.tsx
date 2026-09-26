@@ -37,22 +37,38 @@ export interface PathOption {
   type: string;
 }
 
-/** Every column a report on `entity` can use: its fields, system columns, and linked records' fields (two hops). */
+/**
+ * Every column a report on `entity` can use: its fields, system columns, and linked records'
+ * fields (two hops). With `lines` (one row per line item), the columns of that table come first.
+ */
 export function usePathOptions(
   cfg: EffectiveConfig | undefined,
   entity: string | undefined,
+  lines?: string,
 ): PathOption[] {
   const label = useLabel();
   const { t } = useTranslation();
   return useMemo(() => {
     if (!cfg || !entity) return [];
     const out: PathOption[] = [];
+    const table = lines
+      ? cfg.entities
+          .find((x) => x.key === entity)
+          ?.fields.find((f) => f.key === lines && f.type === 'table')
+      : undefined;
+    for (const c of table?.columns ?? []) {
+      if (c.archived) continue;
+      const path = `${lines}.${c.key}`;
+      const res = resolveReportPath(cfg.entities, entity, path, lines);
+      if (typeof res !== 'string')
+        out.push({ path, label: `${label(table!.label)} › ${label(c.label)}`, type: res.type });
+    }
     const visit = (key: string, prefix: string, labels: string[], depth: number) => {
       const e = cfg.entities.find((x) => x.key === key);
       if (!e) return;
       for (const s of SYSTEM_COLUMNS) {
         if (depth > 0 && s !== 'number') continue;
-        const res = resolveReportPath(cfg.entities, entity, `${prefix}${s}`);
+        const res = resolveReportPath(cfg.entities, entity, `${prefix}${s}`, lines);
         if (typeof res !== 'string')
           out.push({
             path: `${prefix}${s}`,
@@ -63,7 +79,7 @@ export function usePathOptions(
       for (const f of e.fields) {
         if (f.archived || f.type === 'table') continue;
         const path = `${prefix}${f.key}`;
-        const res = resolveReportPath(cfg.entities, entity, path);
+        const res = resolveReportPath(cfg.entities, entity, path, lines);
         if (typeof res !== 'string')
           out.push({ path, label: [...labels, label(f.label)].join(' › '), type: res.type });
         const target =
@@ -74,7 +90,7 @@ export function usePathOptions(
     };
     visit(entity, '', [], 0);
     return out;
-  }, [cfg, entity, label, t]);
+  }, [cfg, entity, lines, label, t]);
 }
 
 const OPS_FOR: Record<string, FilterOp[]> = {
@@ -224,6 +240,7 @@ function FilterEditor({
   options,
   cfg,
   entity,
+  lines,
   index,
   onRemove,
 }: {
@@ -232,13 +249,16 @@ function FilterEditor({
   options: PathOption[];
   cfg: EffectiveConfig;
   entity: string;
+  lines?: string;
   index: number;
   onRemove: () => void;
 }) {
   const { t } = useTranslation();
   const label = useLabel();
   const type = options.find((o) => o.path === filter.path)?.type ?? 'text';
-  const resolved = filter.path ? resolveReportPath(cfg.entities, entity, filter.path) : undefined;
+  const resolved = filter.path
+    ? resolveReportPath(cfg.entities, entity, filter.path, lines)
+    : undefined;
   const field = typeof resolved === 'object' ? resolved.field : undefined;
   const picklist = field?.picklist
     ? cfg.picklists.find((p) => p.key === field.picklist)
@@ -425,8 +445,32 @@ export function ReportBuilder({
   const { can } = useAuth();
   const d = value;
   const set = (patch: Partial<ReportDef>) => onChange({ ...d, ...patch });
-  const options = usePathOptions(cfg, d.entity);
+  const options = usePathOptions(cfg, d.entity, d.lines);
   const mode = modeOf(d);
+  const tables = (cfg.entities.find((e) => e.key === d.entity)?.fields ?? []).filter(
+    (f) => f.type === 'table' && !f.archived,
+  );
+
+  /** One row per record or per line item; paths into a table no longer chosen are dropped. */
+  const setLines = (lines: string | undefined) => {
+    const keep = (p: string | undefined) =>
+      !p || !d.lines || lines === d.lines || !p.startsWith(`${d.lines}.`);
+    set({
+      lines,
+      columns: (d.columns ?? []).filter((c) => keep(c.path)),
+      filters: (d.filters ?? []).filter((f) => keep(f.path)),
+      sort: d.sort?.filter((x) => keep(x.path)),
+      groupBy: d.groupBy?.filter((g) => keep(g.path)),
+      aggregates: d.aggregates?.filter((a) => keep(a.path)),
+      dateField: keep(d.dateField) ? d.dateField : undefined,
+      pivot: d.pivot && {
+        ...d.pivot,
+        rows: d.pivot.rows.map((g) => (keep(g.path) ? g : { ...g, path: '' })),
+        column: keep(d.pivot.column.path) ? d.pivot.column : { path: '' },
+        values: d.pivot.values.filter((a) => keep(a.path)),
+      },
+    });
+  };
   const [preview, setPreview] = useState<ReportResult | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
@@ -519,6 +563,27 @@ export function ReportBuilder({
 
       {d.entity && (
         <>
+          {tables.length > 0 && (
+            <Field
+              label={t('reports.builder.lines.label')}
+              controlId="rb-lines"
+              hint={t('reports.builder.lines.hint')}
+            >
+              <Form.Select
+                size="sm"
+                style={{ maxWidth: 420 }}
+                value={d.lines ?? ''}
+                onChange={(e) => setLines(e.target.value || undefined)}
+              >
+                <option value="">{t('reports.builder.lines.records')}</option>
+                {tables.map((f) => (
+                  <option key={f.key} value={f.key}>
+                    {t('reports.builder.lines.perLine', { table: label(f.label) })}
+                  </option>
+                ))}
+              </Form.Select>
+            </Field>
+          )}
           <ButtonGroup size="sm" className="mb-3">
             {(['rows', 'groups', 'pivot'] as Mode[]).map((m) => (
               <Button
@@ -780,6 +845,7 @@ export function ReportBuilder({
                       options={options}
                       cfg={cfg}
                       entity={d.entity!}
+                      lines={d.lines}
                       onChange={setItem}
                       onRemove={remove}
                     />

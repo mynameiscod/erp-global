@@ -166,6 +166,38 @@ export class AccessService {
     return toRoleDto(await this.loadRole(String(id)));
   }
 
+  /**
+   * A role a pack brings, created once by its key. If it exists (maybe edited by the
+   * admin since), it is left as it is.
+   */
+  async ensurePackRole(key: string, input: CreateRoleInput) {
+    const Roles = await this.roles();
+    const existing = await Roles.findOne({ key }).lean();
+    if (existing) return toRoleDto(existing);
+    const permissions = [...new Set(input.permissions)] as Permission[];
+    await this.assertEntitiesExist(permissions);
+    const id = new Types.ObjectId();
+    const create = (name: string) =>
+      this.conn.transaction(async (session) => {
+        await Roles.create([{ _id: id, key, name, description: input.description, permissions }], {
+          session,
+        });
+        await this.outbox.record(
+          EventTypes.RoleCreated,
+          { roleId: String(id), name, permissions, key },
+          { session },
+        );
+      });
+    try {
+      await create(input.name);
+    } catch (e) {
+      if ((e as { code?: number }).code !== 11000) throw e;
+      // A role with this name exists already (the company's own): keep both, apart.
+      await create(`${input.name} (${key})`);
+    }
+    return toRoleDto(await this.loadRole(String(id)));
+  }
+
   async updateRole(id: string, input: Partial<CreateRoleInput>) {
     const role = await this.loadRole(id);
     if (role.system) throw AppError.forbidden('System roles cannot be changed');
@@ -422,7 +454,13 @@ export class AccessService {
     return { userIds: [...new Set(all.map((a) => a.userId))] };
   }
 
-  async roleHolders(roleId: string, path?: string) {
+  async roleHolders(role: string | { key: string }, path?: string) {
+    let roleId = typeof role === 'string' ? role : undefined;
+    if (typeof role !== 'string') {
+      const found = role.key ? await (await this.roles()).findOne({ key: role.key }).lean() : null;
+      if (!found) return { userIds: [] };
+      roleId = String(found._id);
+    }
     if (!path) {
       // Company-wide records: the holders nearest the top of the org tree.
       const all = await (await this.assignments()).find({ roleId }).lean();

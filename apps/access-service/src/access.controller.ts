@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { Internal, RequirePermissions } from '@erp/auth';
@@ -10,7 +10,7 @@ import {
   type CreateAssignmentInput,
   type CreateRoleInput,
 } from '@erp/contracts';
-import { ApiZodBody, ZodPipe } from '@erp/service-kit';
+import { ApiZodBody, AppError, ZodPipe } from '@erp/service-kit';
 import { requireContext } from '@erp/tenancy';
 import { AccessService } from './access.service';
 
@@ -90,7 +90,11 @@ const bootstrapSchema = z.object({
 });
 
 const holdersQuery = z.object({
-  roleId: objectIdSchema,
+  roleId: objectIdSchema.optional(),
+  roleKey: z
+    .string()
+    .regex(/^[a-z][a-z0-9_]{1,39}$/)
+    .optional(),
   path: z
     .string()
     .regex(/^(\/[a-f0-9]{24})+\/$/)
@@ -119,13 +123,19 @@ export class InternalAccessController {
 
   @Get('role-holders')
   holders(@Query(new ZodPipe(holdersQuery)) q: z.infer<typeof holdersQuery>) {
-    return this.access.roleHolders(q.roleId, q.path);
+    return this.access.roleHolders(q.roleId ?? { key: q.roleKey ?? '' }, q.path);
   }
 
   /** Everyone who holds a role anywhere (scheduled report recipients). */
   @Get('roles/:roleId/holders')
   allHolders(@Param('roleId') roleId: string) {
     return this.access.allRoleHolders(roleId);
+  }
+
+  @Put('pack-roles/:key')
+  packRole(@Param('key') key: string, @Body(new ZodPipe(createRoleSchema)) body: CreateRoleInput) {
+    if (!/^[a-z][a-z0-9_]{1,39}$/.test(key)) throw AppError.badRequest('Invalid role key');
+    return this.access.ensurePackRole(key, body);
   }
 
   @Get('users/:userId/acl')

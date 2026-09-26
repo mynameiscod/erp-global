@@ -323,6 +323,13 @@ export class OrgService {
       }));
   }
 
+  /** The company's top unit. */
+  async internalRoot() {
+    const root = await (await this.units()).findOne({ parentId: null }).lean();
+    if (!root) throw AppError.notFound('Org unit');
+    return { id: String(root._id), path: root.path, name: root.name };
+  }
+
   async internalGet(id: string) {
     return this.internalDto(await this.load(id));
   }

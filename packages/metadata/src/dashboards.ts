@@ -46,6 +46,8 @@ export interface DashboardDef {
   label: LocalizedText;
   /** Roles the dashboard is for. Empty: everyone. */
   roleIds?: string[];
+  /** The same, by role key (used by packs). */
+  roleKeys?: string[];
   /** The home dashboard of these roles. */
   home?: boolean;
   /** Filters that apply to every widget. */
@@ -106,6 +108,7 @@ export const dashboardSchema = z
     key: keySchema,
     label: localizedTextSchema,
     roleIds: z.array(objectId).max(50).optional(),
+    roleKeys: z.array(keySchema).max(50).optional(),
     home: z.boolean().optional(),
     filters: z
       .object({ dateRange: z.boolean().optional(), orgUnit: z.boolean().optional() })

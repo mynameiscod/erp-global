@@ -56,5 +56,6 @@ export function platformBaseLayer(): ConfigLayer {
     printTemplates: [],
     reports: [],
     dashboards: [],
+    identifierTypes: [],
   };
 }

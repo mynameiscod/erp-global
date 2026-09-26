@@ -19,6 +19,7 @@ import { AppModule as FileModule } from '../../../apps/file-service/src/app.modu
 import { AppModule as WorkflowModule } from '../../../apps/workflow-service/src/app.module';
 import { AppModule as DocumentModule } from '../../../apps/document-service/src/app.module';
 import { AppModule as ReportingModule } from '../../../apps/reporting-service/src/app.module';
+import { AppModule as PackModule } from '../../../apps/pack-service/src/app.module';
 
 const SERVICES = [
   'identity',
@@ -34,6 +35,7 @@ const SERVICES = [
   'workflow',
   'document',
   'reporting',
+  'pack',
 ] as const;
 type ServiceName = (typeof SERVICES)[number];
 
@@ -51,6 +53,7 @@ const MODULES: Record<ServiceName, Type> = {
   workflow: WorkflowModule,
   document: DocumentModule,
   reporting: ReportingModule,
+  pack: PackModule,
 };
 
 async function freePort(): Promise<number> {
@@ -100,6 +103,7 @@ export async function startStack(opts: { env?: Record<string, string> } = {}): P
     NOTIFICATION_SERVICE_URL: url('notification'),
     DOCUMENT_SERVICE_URL: url('document'),
     REPORTING_SERVICE_URL: url('reporting'),
+    PACK_SERVICE_URL: url('pack'),
     // Tests run the scheduler by hand and send webhooks to a local receiver.
     SCHEDULER_ENABLED: 'false',
     WEBHOOK_ALLOW_PRIVATE: 'true',
@@ -151,6 +155,7 @@ export async function startStack(opts: { env?: Record<string, string> } = {}): P
       NOTIFICATION_SERVICE_URL: url('notification'),
       DOCUMENT_SERVICE_URL: url('document'),
       REPORTING_SERVICE_URL: url('reporting'),
+      PACK_SERVICE_URL: url('pack'),
     }),
   );
   const server: Server = await new Promise((resolve) => {

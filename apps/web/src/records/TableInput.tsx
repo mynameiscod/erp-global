@@ -1,14 +1,15 @@
 import { Button, Table } from 'react-bootstrap';
 import { useTranslation } from 'react-i18next';
 import {
-  COMPUTED_TYPES,
   computeFormulas,
+  isCalculated,
   TABLE_MAX_ROWS,
   type EntityDef,
   type RecordData,
 } from '@erp/metadata';
 import { useLabel } from '../config/hooks';
 import { formatNumber } from '../lib/format';
+import { displayValue } from './display';
 import { FieldInput, type FieldInputProps } from './FieldInput';
 
 type Row = RecordData & { _id?: string };
@@ -70,7 +71,7 @@ export function TableInput({
           <tr>
             <th style={{ width: 36 }}>#</th>
             {columns.map((c) => (
-              <th key={c.key} className={c.type === 'formula' ? 'text-end' : ''}>
+              <th key={c.key} className={isCalculated(c) ? 'text-end' : ''}>
                 {label(c.label)}
                 {c.required && <span className="text-danger ms-1">*</span>}
               </th>
@@ -87,13 +88,25 @@ export function TableInput({
                 {columns.map((c) => (
                   <td
                     key={c.key}
-                    style={{ minWidth: c.type === 'text' || c.type === 'lookup' ? 180 : 110 }}
+                    style={{
+                      minWidth: isCalculated(c)
+                        ? 90
+                        : c.type === 'text' || c.type === 'lookup'
+                          ? 180
+                          : 110,
+                    }}
                   >
-                    {COMPUTED_TYPES.has(c.type) ? (
+                    {isCalculated(c) ? (
                       <div className="text-end">
-                        {typeof computed[c.key] === 'number'
-                          ? formatNumber(computed[c.key] as number, i18n.language)
-                          : String(computed[c.key] ?? '')}
+                        {c.calculated
+                          ? displayValue(c, computed[c.key], {
+                              cfg,
+                              locale: i18n.language,
+                              label,
+                            })
+                          : typeof computed[c.key] === 'number'
+                            ? formatNumber(computed[c.key] as number, i18n.language)
+                            : String(computed[c.key] ?? '')}
                       </div>
                     ) : (
                       <FieldInput

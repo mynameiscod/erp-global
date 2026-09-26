@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { dashboardSchema } from './dashboards';
+import { identifierTypeSchema, workCalendarSchema } from './identifiers';
+import { entityTaxSchema, taxSetupSchema } from './tax';
 import { printTemplateSchema } from './print';
 import { reportSchema } from './reports';
 import {
@@ -45,6 +47,11 @@ const fieldBaseSchema = z
     accept: z.array(z.string().max(100)).max(30).optional(),
     maxSizeMb: z.number().min(0.1).max(100).optional(),
     maxRows: z.number().int().min(1).max(TABLE_MAX_ROWS).optional(),
+    identifier: keySchema.optional(),
+    defaultFrom: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]{1,39}\.[a-z][a-z0-9_]{1,39}$/, 'Use lookup.field')
+      .optional(),
   })
   .strict();
 
@@ -66,6 +73,9 @@ export const entityPatchSchema = z
     titleField: keySchema.optional(),
     orgScoped: z.boolean().optional(),
     archived: z.boolean().optional(),
+    roles: z.array(keySchema).max(10).optional(),
+    // A layer may set part of it (a Country Pack adds its fields); the result is checked merged.
+    tax: entityTaxSchema.partial().optional(),
     fields: z.array(fieldDefSchema).max(300),
   })
   .strict();
@@ -146,8 +156,14 @@ const hours = z
   .max(24 * 60)
   .optional();
 
+/** A role by id or by key (packs name their roles by key). */
+const roleRefSchema = z
+  .object({ type: z.literal('role'), roleId: objectId.optional(), roleKey: keySchema.optional() })
+  .strict()
+  .refine((r) => !!r.roleId !== !!r.roleKey, 'Choose a role');
+
 export const approverSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('role'), roleId: objectId }).strict(),
+  roleRefSchema,
   z.object({ type: z.literal('manager') }).strict(),
   z.object({ type: z.literal('unit_head') }).strict(),
   z.object({ type: z.literal('users'), userIds: z.array(objectId).min(1).max(50) }).strict(),
@@ -185,6 +201,7 @@ export const workflowSchema = z
             from: z.array(keySchema).min(1).max(30),
             to: keySchema,
             roleIds: z.array(objectId).max(50).optional(),
+            roleKeys: z.array(keySchema).max(50).optional(),
             requesterOnly: z.boolean().optional(),
             condition,
             commentRequired: z.boolean().optional(),
@@ -243,7 +260,7 @@ const recipientSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('creator') }).strict(),
   z.object({ type: z.literal('manager') }).strict(),
   z.object({ type: z.literal('field'), field: keySchema }).strict(),
-  z.object({ type: z.literal('role'), roleId: objectId }).strict(),
+  roleRefSchema,
   z.object({ type: z.literal('users'), userIds: z.array(objectId).min(1).max(50) }).strict(),
 ]);
 
@@ -356,5 +373,8 @@ export const configLayerSchema = z.object({
   printTemplates: z.array(printTemplateSchema).max(200).default([]),
   reports: z.array(reportSchema).max(500).default([]),
   dashboards: z.array(dashboardSchema).max(100).default([]),
+  taxes: taxSetupSchema.optional(),
+  identifierTypes: z.array(identifierTypeSchema).max(100).default([]),
+  calendar: workCalendarSchema.optional(),
   settings: settingsSchema.optional(),
 });

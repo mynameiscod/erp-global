@@ -1,4 +1,5 @@
 import { fiscalYearLabel } from './fiscal';
+import type { WorkCalendar } from './identifiers';
 import type { DateBucket, RelativeDate } from './reports';
 
 /**
@@ -195,4 +196,37 @@ export function zonedDayStart(date: string, timezone: string): Date {
   const second = zoneOffsetMinutes(at, timezone);
   at = new Date(guess.getTime() - second * 60_000);
   return at;
+}
+
+/**
+ * `hours` of working time after `start`: only on working days, within working hours,
+ * skipping holidays, in the company's time zone.
+ */
+export function addWorkingTime(
+  start: Date,
+  hours: number,
+  cal: WorkCalendar,
+  timezone: string,
+): Date {
+  const [sh, sm] = (cal.hours?.start ?? '09:00').split(':').map(Number);
+  const [eh, em] = (cal.hours?.end ?? '18:00').split(':').map(Number);
+  const weekend = new Set(cal.weekend ?? [0]);
+  const holidays = new Set((cal.holidays ?? []).map((h) => h.date));
+  let remaining = hours * 3_600_000;
+  let day = todayIn(timezone, start);
+  for (let i = 0; i < 800 && remaining > 0; i++) {
+    const date = iso(day);
+    if (!weekend.has(day.getUTCDay()) && !holidays.has(date)) {
+      const dayStart = zonedDayStart(date, timezone).getTime();
+      const open = dayStart + (sh * 60 + sm) * 60_000;
+      const close = dayStart + (eh * 60 + em) * 60_000;
+      const from = Math.max(open, start.getTime());
+      if (from < close) {
+        if (close - from >= remaining) return new Date(from + remaining);
+        remaining -= close - from;
+      }
+    }
+    day = addDays(day, 1);
+  }
+  return new Date(start.getTime() + hours * 3_600_000);
 }

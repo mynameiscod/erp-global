@@ -236,7 +236,7 @@ export class SchedulesService {
         userId: u.id,
         acl,
         lang: u.language || cfg.tenant.defaultLanguage || 'en',
-        roleIds: await this.catalog.roleIdsOf(u.id),
+        ...(await this.catalog.rolesOf(u.id)),
       };
       const entry = hasPermission({ acl }, 'reports.export')
         ? await this.entryFor(s, viewer)

@@ -1,5 +1,8 @@
 import type { AutomationDef, MessageTemplate, RuleDef, WorkflowDef } from './automation-types';
 import type { DashboardDef } from './dashboards';
+import type { IdentifierType, WorkCalendar } from './identifiers';
+import type { InstalledPack } from './packs';
+import type { EntityTaxSettings, TaxSetup } from './tax';
 import type { PrintTemplateDef } from './print';
 import type { ReportDef } from './reports';
 
@@ -35,6 +38,11 @@ export type FieldType = (typeof FIELD_TYPES)[number];
 
 /** Types whose value is computed by the server, never sent by the client. */
 export const COMPUTED_TYPES: ReadonlySet<FieldType> = new Set(['formula', 'autonumber']);
+
+/** Fields the server fills: formulas, auto-numbers and fields added by the tax engine. */
+export function isCalculated(f: Pick<FieldDef, 'type' | 'calculated'>): boolean {
+  return COMPUTED_TYPES.has(f.type) || !!f.calculated;
+}
 
 /** Column types a table field (line items) can have. */
 export const TABLE_COLUMN_TYPES: readonly FieldType[] = [
@@ -92,6 +100,15 @@ export interface FieldDef {
   maxSizeMb?: number;
   // table: rows stored inside the record, each column a field of its own
   columns?: FieldDef[];
+  /** Text fields: validated as this identifier type (e.g. a tax number), from a Country Pack. */
+  identifier?: string;
+  /** Filled by the server (the tax engine); never set in the Studio. */
+  calculated?: 'tax';
+  /**
+   * When left empty, filled on save from a linked record: `item.price` copies the `price`
+   * of the record the `item` lookup (a field, or a column of the same line) points to.
+   */
+  defaultFrom?: string;
   /** At most this many rows (default and maximum 500). */
   maxRows?: number;
 }
@@ -108,6 +125,10 @@ export interface EntityDef {
   /** Records belong to an org unit and follow org-unit permission scope. */
   orgScoped?: boolean;
   archived?: boolean;
+  /** What the entity is, for packs: e.g. `customer`, `item`, `sales_invoice`. */
+  roles?: string[];
+  /** Taxes calculated on its line items. */
+  tax?: EntityTaxSettings;
   fields: FieldDef[];
 }
 
@@ -184,6 +205,10 @@ export interface ConfigLayer {
   printTemplates: PrintTemplateDef[];
   reports: ReportDef[];
   dashboards: DashboardDef[];
+  /** Step 6: tax data, identifier types and the working calendar (usually from a Country Pack). */
+  taxes?: TaxSetup;
+  identifierTypes: IdentifierType[];
+  calendar?: WorkCalendar;
   settings?: ConfigSettings;
 }
 
@@ -198,6 +223,13 @@ export interface OrgUnitLayer extends ConfigLayer {
 export interface TenantConfig {
   company: ConfigLayer;
   orgUnits: Record<string, OrgUnitLayer>;
+  /** Installed packs, as snapshots of the version installed. Below the company layer. */
+  packs?: InstalledPack[];
+  /**
+   * Entities and fields that removed or upgraded packs no longer define but that hold data,
+   * kept archived so no record is orphaned.
+   */
+  retired?: ConfigLayer;
 }
 
 /** The merged configuration that applies to one place in the org tree. */
@@ -221,16 +253,19 @@ export function emptyLayer(): ConfigLayer {
     printTemplates: [],
     reports: [],
     dashboards: [],
+    identifierTypes: [],
   };
 }
 
 /** Fills lists that older saved configurations do not have. */
 export function normalizeTenantConfig(config: TenantConfig): TenantConfig {
   return {
+    ...config,
     company: normalizeLayer(config.company),
     orgUnits: Object.fromEntries(
       Object.entries(config.orgUnits).map(([id, l]) => [id, normalizeLayer(l)]),
     ),
+    ...(config.retired ? { retired: normalizeLayer(config.retired) } : {}),
   };
 }
 

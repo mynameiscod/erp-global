@@ -370,7 +370,126 @@
     "dashboards": "Dashboards",
     "addColumn": "Add column",
     "columnsHelp": "Each row has these columns. A formula column can use the other columns of its row, e.g. qty * rate. Elsewhere, add a column up with SUM(lines.amount).",
-    "maxRows": "Most rows"
+    "maxRows": "Most rows",
+    "taxes": {
+      "tab": "Taxes",
+      "title": "Tax setup",
+      "intro": "The taxes your invoices and bills calculate: the taxes charged, the rates items are taxed at, and the rules that choose the taxes for a sale.",
+      "introPack": "Tax data comes from your Country Pack and is shown read-only. Change an item to make your own copy; your copy replaces the pack's, and removing it brings the pack's back.",
+      "companyOnly": "Taxes and identifier types apply to the whole company. Choose \"Whole company\" to edit them.",
+      "components": "Taxes charged",
+      "componentsHelp": "Each tax that appears on documents, e.g. CGST, SGST, IGST or VAT.",
+      "categories": "Tax rates",
+      "categoriesHelp": "What an item or service is taxed at. The rate is shared across taxes by the rule that applies; extra taxes (e.g. cess:12) are always added.",
+      "rules": "Rules",
+      "rulesHelp": "The first rule whose condition holds chooses the taxes for a sale. Pack rules come first, in their order; your new rules come after them.",
+      "rate": "Rate",
+      "kind": "Kind",
+      "kinds": {
+        "taxable": "Taxable",
+        "exempt": "Exempt",
+        "nil": "Nil rated",
+        "non_taxable": "Outside tax"
+      },
+      "extra": "Extra taxes",
+      "condition": "When",
+      "always": "Always",
+      "split": "Shared as",
+      "share": "Share (0 to 1)",
+      "addSplit": "Add tax",
+      "zero": "No tax",
+      "add": "Add",
+      "change": "Change",
+      "revert": "Revert",
+      "changed": "Changed",
+      "fromPack": "Pack",
+      "inherit": "As the pack: {{value}}",
+      "defaultCategory": "Default rate",
+      "defaultCategoryHelp": "Used for lines that name no tax rate.",
+      "roundTotal": "Round the total",
+      "roundTotalHelp": "Round the grand total to a whole unit and show the difference as round-off."
+    },
+    "calendar": {
+      "title": "Working calendar",
+      "intro": "Working days, hours and holidays. Approval reminders and escalations can count working hours only. Your week and hours replace the pack's; your holidays are added to it.",
+      "weekend": "Days off each week",
+      "hours": "Working hours",
+      "start": "From",
+      "end": "To",
+      "workingHoursOnly": "Reminders and escalations count working hours only",
+      "workingHoursOnlyHelp": "Weekends, holidays and time outside working hours are skipped when waiting times are counted.",
+      "holidays": "Holidays",
+      "date": "Date",
+      "addHoliday": "Add holiday",
+      "packHolidays": "Holidays from packs ({{count}})",
+      "packHolidaysHelp": "To rename one, add a holiday with the same date."
+    },
+    "identifiers": {
+      "title": "Identifier types",
+      "intro": "Formats for tax and registration numbers (e.g. GSTIN, PAN). Text fields set to an identifier type are checked against its pattern and check digit.",
+      "add": "New identifier type",
+      "edit": "Identifier type",
+      "patternHelp": "A regular expression the whole value must match, e.g. [A-Z]{5}[0-9]{4}[A-Z]",
+      "checksum": "Check digit",
+      "checksums": {
+        "luhn": "Luhn",
+        "luhn_mod36": "Luhn (letters and digits)",
+        "verhoeff": "Verhoeff",
+        "mod11": "Weighted mod 11"
+      },
+      "uppercase": "Convert to capital letters",
+      "example": "Example",
+      "test": "Try a value",
+      "valid": "Valid"
+    },
+    "field": {
+      "identifier": "Identifier type",
+      "identifierHelp": "Check the value as a tax or registration number.",
+      "defaultFrom": "Default from",
+      "defaultFromNone": "— Not copied —",
+      "defaultFromHelp": "When left empty, filled on save from the linked record, e.g. an item's price.",
+      "locked": "Statutory",
+      "lockedHelp": "This field is required by a Country Pack. You can change its label, help and form placement, but not its type, and it cannot be archived.",
+      "taxCalculated": "Calculated by taxes",
+      "taxCalculatedHelp": "The tax engine fills this field on every save from the line items and the tax setup. Use it in print templates, reports and formulas; it cannot be edited.",
+      "view": "View"
+    },
+    "entityTax": {
+      "title": "Taxes",
+      "on": "Calculated",
+      "off": "Not calculated",
+      "intro": "Calculate taxes on this entity's line items on every save. The records get the tax per line, a tax summary and the totals.",
+      "enable": "Calculate taxes",
+      "roles": "What this entity is",
+      "rolesHelp": "Roles set by packs. A Country Pack uses them to add its fields, templates and reports.",
+      "noTable": "Add a table field (line items) first.",
+      "lines": "Line items",
+      "amount": "Amount column",
+      "category": "Tax rate column",
+      "categoryHelp": "A column holding the tax rate key of each line.",
+      "code": "HSN/SAC or code column",
+      "codeHelp": "Kept with each line for tax reports.",
+      "document": "Document kind",
+      "documents": {
+        "invoice": "Tax invoice",
+        "credit_note": "Credit note",
+        "debit_note": "Debit note",
+        "bill_of_supply": "Bill of supply",
+        "receipt": "Receipt"
+      },
+      "inclusive": "Prices include tax",
+      "sources": "Where the tax inputs come from",
+      "sourcesHelp": "A field (place_of_supply), a linked record's field (customer.state) or the org unit's field (unit.state).",
+      "sellerRegion": "Seller's region",
+      "buyerRegion": "Buyer's region",
+      "buyerCountry": "Buyer's country",
+      "buyerRegistered": "Buyer is registered",
+      "reverseCharge": "Reverse charge",
+      "adds": "Each line gets taxable value, tax rate and tax; the record gets subtotal, tax total, round-off, grand total, tax type and a tax summary."
+    },
+    "roles": {
+      "packRole": "{{name}} (pack role)"
+    }
   },
   "records": {
     "new": "New {{name}}",
@@ -387,7 +506,27 @@
     "deleteConfirm": "Delete this record?",
     "searchHint": "Type to search",
     "addRow": "Add row",
-    "removeRow": "Remove row"
+    "removeRow": "Remove row",
+    "moreDetails": "More details",
+    "identifier": {
+      "invalid": "Not a valid {{name}}",
+      "invalidExample": "Not a valid {{name}}, e.g. {{example}}",
+      "checkDigit": "{{name}} check digit does not match"
+    },
+    "tax": {
+      "summary": "Tax summary",
+      "component": "Tax",
+      "rate": "Rate",
+      "taxable": "Taxable value",
+      "amount": "Amount",
+      "none": "No tax on these lines",
+      "subtotal": "Subtotal",
+      "taxTotal": "Tax total",
+      "roundOff": "Round off",
+      "grandTotal": "Grand total",
+      "previewNote": "Preview while you edit. The final tax is calculated on save.",
+      "unresolved": "The seller's or buyer's state could not be found here, so this preview may use the wrong tax type. The final tax is calculated on save."
+    }
   },
   "fieldTypes": {
     "text": "Text",
@@ -846,6 +985,14 @@
       "pie": "Pie",
       "donut": "Donut",
       "stacked_bar": "Stacked bar"
+    },
+    "builder": {
+      "lines": {
+        "label": "Rows",
+        "hint": "One row per record, or one row per line item of a table (e.g. for tax summaries by rate or HSN code).",
+        "records": "One row per record",
+        "perLine": "One row per line of {{table}}"
+      }
     }
   },
   "dashboards": {
@@ -990,5 +1137,86 @@
     "message": "Message",
     "send": "Send",
     "emailSent": "Sent to {{count}} addresses."
+  },
+  "packs": {
+    "nav": "Packs",
+    "title": "Packs",
+    "subtitle": "Ready-made setups for your country and industry. Installing puts a pack into the Studio draft; publishing makes it live.",
+    "setupStep": "Install your Country and Industry Packs",
+    "countryPacks": "Country Packs",
+    "countryHelp": "Taxes, identifiers, holidays, number formats and statutory documents for a country.",
+    "industryPacks": "Industry Packs",
+    "industryHelp": "Starter kits with entities, forms, workflows, documents, reports and roles for your business.",
+    "none": "No packs available.",
+    "suggested": "Suggested for your company",
+    "version": "Version {{version}}",
+    "status": {
+      "notInstalled": "Not installed",
+      "inDraft": "In draft v{{version}} — publish to apply",
+      "live": "Live v{{version}}",
+      "upgrade": "Upgrade available v{{version}}",
+      "removedInDraft": "Removed in draft (live v{{version}})"
+    },
+    "draftPending": "This pack is in the draft and not live yet.",
+    "removedPending": "This pack is removed in the draft; it stays live until you publish.",
+    "goPublish": "Review and publish in Studio → Versions",
+    "installedNotice": "{{name}} is in the draft. Nothing changes for users until you publish.",
+    "removedNotice": "{{name}} is removed from the draft. Publish to apply; all records are kept.",
+    "usesTax": "This pack uses taxes. Install a Country Pack to calculate them; without one it works without tax.",
+    "contains": "What it contains",
+    "entities": "Entities",
+    "roles": "Roles",
+    "counts": {
+      "entities": "Entities: {{count}}",
+      "reports": "Reports: {{count}}",
+      "dashboards": "Dashboards: {{count}}",
+      "printTemplates": "Print templates: {{count}}",
+      "workflows": "Workflows: {{count}}",
+      "automations": "Automations: {{count}}",
+      "roles": "Roles: {{count}}",
+      "samples": "Sample records: {{count}}",
+      "patches": "Changes to standard items: {{count}}"
+    },
+    "samplesAvailable": "Sample records are available to try the pack out.",
+    "samplesAdded": "Sample data added ({{count}} records).",
+    "previewInstall": "Preview & install",
+    "upgrade": "Upgrade to v{{version}}",
+    "remove": "Remove",
+    "addSamples": "Add sample data",
+    "removeSamples": "Remove sample data",
+    "addSamplesConfirm": "Add this pack's sample records? You can remove them later with one click.",
+    "removeSamplesConfirm": "Remove this pack's sample records? Your own records are not affected.",
+    "history": "History",
+    "actions": {
+      "installed": "Installed v{{version}}",
+      "upgraded": "Upgraded {{from}} → {{version}}",
+      "removed": "Removed v{{version}}",
+      "samples_added": "Sample data added (v{{version}})",
+      "samples_removed": "Sample data removed"
+    },
+    "andMore": "and {{count}} more",
+    "preview": {
+      "installTitle": "Install {{name}}",
+      "upgradeTitle": "Upgrade {{name}} from {{from}} to {{to}}",
+      "reinstallTitle": "Reinstall {{name}} v{{to}}",
+      "help": "This is what the pack will change in your draft configuration.",
+      "nothing": "Nothing changes: your draft already matches this version.",
+      "added": "Added",
+      "changed": "Changed",
+      "removed": "Removed",
+      "removedHelp": "Removed items that hold data are archived when you publish; records are kept.",
+      "conflicts": "Conflicts to resolve: {{count}}",
+      "conflictsHelp": "You and the pack both changed these items. Your version is kept unless you choose the pack's.",
+      "keepMine": "Keep mine",
+      "takePack": "Take pack's",
+      "draftNote": "The pack goes into the Studio draft. Review it there and publish to make it live.",
+      "install": "Install into draft",
+      "upgrade": "Upgrade in draft"
+    },
+    "removeTitle": "Remove {{name}}?",
+    "removeHelp": "The pack's configuration is taken out of the draft.",
+    "removeKeepsData": "No data is deleted: all records are kept.",
+    "removeArchived": "Fields and entities that hold records are archived when you publish, not deleted.",
+    "removePublish": "Nothing changes for users until you publish in Studio → Versions."
   }
 }

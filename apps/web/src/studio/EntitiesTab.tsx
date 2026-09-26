@@ -2,11 +2,18 @@ import { useState } from 'react';
 import { Badge, Button, Card, Col, Form, Modal, Row } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { KEY_RE, SYSTEM_ENTITY_KEYS, type EntityPatch, type LocalizedText } from '@erp/metadata';
+import {
+  KEY_RE,
+  mergeLayers,
+  SYSTEM_ENTITY_KEYS,
+  type EntityPatch,
+  type LocalizedText,
+} from '@erp/metadata';
 import { useAuth } from '../auth/AuthContext';
 import { useConfigActions, useLabel } from '../config/hooks';
 import { LocalizedInput } from '../config/LocalizedInput';
 import { ErrorAlert, Field } from '../components/ui';
+import { PACK_BADGE, useInherited } from './packBase';
 import { useStudio } from './StudioContext';
 
 const ICONS = [
@@ -148,12 +155,16 @@ export function EntitiesTab() {
   const label = useLabel();
   const { can } = useAuth();
   const { scope, layer, company } = useStudio();
+  const { packs } = useInherited();
   const [creating, setCreating] = useState(false);
 
-  // In an override, the entities to extend are those the company defines.
-  const custom = (scope === 'company' ? layer : company).entities.filter(
-    (e) => e.kind === 'custom' || !e.kind,
+  // In an override, the entities to extend are those the company (and its packs) define.
+  const custom = mergeLayers([packs, scope === 'company' ? layer : company]).entities.filter(
+    (e) =>
+      (e.kind === 'custom' || !e.kind) &&
+      !(SYSTEM_ENTITY_KEYS as readonly string[]).includes(e.key),
   );
+  const fromPack = new Set(packs.entities.filter((e) => e.kind).map((e) => e.key));
   const addedHere = new Map(layer.entities.map((e) => [e.key, e.fields.length]));
   const systemLabels: Record<string, LocalizedText> = {
     user: { en: 'User', hi: 'उपयोगकर्ता', ar: 'مستخدم' },
@@ -203,6 +214,7 @@ export function EntitiesTab() {
                 {t('studio.fields')}: {e.fields.filter((f) => !f.archived).length}
               </Badge>
               {e.archived && <Badge bg="secondary">{t('studio.archived')}</Badge>}
+              {fromPack.has(e.key) && <Badge {...PACK_BADGE}>{t('studio.taxes.fromPack')}</Badge>}
               {scope !== 'company' && addedHere.get(e.key) ? (
                 <Badge bg="warning">+{addedHere.get(e.key)}</Badge>
               ) : null}

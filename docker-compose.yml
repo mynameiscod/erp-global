@@ -61,6 +61,7 @@ services:
       MONGO_PASSWORD_WORKFLOW: ${MONGO_PASSWORD_WORKFLOW}
       MONGO_PASSWORD_DOCUMENT: ${MONGO_PASSWORD_DOCUMENT}
       MONGO_PASSWORD_REPORTING: ${MONGO_PASSWORD_REPORTING}
+      MONGO_PASSWORD_PACK: ${MONGO_PASSWORD_PACK}
       MONGO_PASSWORD_NOTIFICATION: ${MONGO_PASSWORD_NOTIFICATION}
       MONGO_PASSWORD_CONFIG: ${MONGO_PASSWORD_CONFIG}
       MONGO_PASSWORD_RECORDS: ${MONGO_PASSWORD_RECORDS}
@@ -313,6 +314,20 @@ services:
       FILE_SERVICE_URL: http://file-service:3010
       DOCUMENT_SERVICE_URL: http://document-service:3012
 
+  pack-service:
+    <<: *service
+    build: { <<: *build, args: { APP: pack-service } }
+    environment:
+      <<: *service-env
+      PORT: 3014
+      MONGO_URI: mongodb://svc_pack:${MONGO_PASSWORD_PACK}@mongo:27017/?replicaSet=rs0&authSource=admin
+      MONGO_DB: erp_pack
+      CONFIG_SERVICE_URL: http://config-service:3008
+      RECORDS_SERVICE_URL: http://records-service:3009
+      ACCESS_SERVICE_URL: http://access-service:3004
+      TENANT_SERVICE_URL: http://tenant-service:3002
+      ORG_SERVICE_URL: http://org-service:3003
+
   api-gateway:
     restart: unless-stopped
     networks: [internal]
@@ -332,6 +347,7 @@ services:
         notification-service,
         document-service,
         reporting-service,
+        pack-service,
         redis,
       ]
     environment:
@@ -355,6 +371,7 @@ services:
       NOTIFICATION_SERVICE_URL: http://notification-service:3007
       DOCUMENT_SERVICE_URL: http://document-service:3012
       REPORTING_SERVICE_URL: http://reporting-service:3013
+      PACK_SERVICE_URL: http://pack-service:3014
 
   web:
     restart: unless-stopped

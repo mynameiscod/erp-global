@@ -28,6 +28,7 @@ export const gatewayEnvSchema = z.object({
   NOTIFICATION_SERVICE_URL: url,
   DOCUMENT_SERVICE_URL: url,
   REPORTING_SERVICE_URL: url,
+  PACK_SERVICE_URL: url,
 });
 
 export type GatewayEnv = z.infer<typeof gatewayEnvSchema>;
@@ -78,6 +79,11 @@ export function routes(env: GatewayEnv): Route[] {
       prefixes: ['/api/v1/reports', '/api/v1/dashboards'],
       service: 'reporting-service',
       target: env.REPORTING_SERVICE_URL,
+    },
+    {
+      prefixes: ['/api/v1/packs'],
+      service: 'pack-service',
+      target: env.PACK_SERVICE_URL,
     },
     // Listed before the general notifications route so the stream is matched first.
     {

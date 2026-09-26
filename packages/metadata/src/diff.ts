@@ -1,4 +1,6 @@
 import { pickText } from './i18n';
+import { mergeLayers } from './merge';
+import { packLayers } from './packs';
 import { emptyLayer, normalizeLayer, type ConfigLayer, type TenantConfig } from './types';
 
 type Keyed = { key?: string; entity?: string; label?: Record<string, string> };
@@ -48,6 +50,11 @@ function diffLayer(prev: ConfigLayer, next: ConfigLayer, out: string[], prefix: 
   diffList('print template', p.printTemplates, n.printTemplates, out, prefix);
   diffList('report', p.reports, n.reports, out, prefix);
   diffList('dashboard', p.dashboards, n.dashboards, out, prefix);
+  diffList('identifier type', p.identifierTypes, n.identifierTypes, out, prefix);
+  if (JSON.stringify(p.taxes ?? null) !== JSON.stringify(n.taxes ?? null))
+    out.push(`${prefix}Changed taxes`);
+  if (JSON.stringify(p.calendar ?? null) !== JSON.stringify(n.calendar ?? null))
+    out.push(`${prefix}Changed working calendar`);
   if (JSON.stringify(prev.settings ?? {}) !== JSON.stringify(next.settings ?? {}))
     out.push(`${prefix}Changed settings`);
 }
@@ -57,6 +64,13 @@ const EMPTY: ConfigLayer = emptyLayer();
 /** Human-readable list of what changed between two configurations. */
 export function diffConfigs(prev: TenantConfig, next: TenantConfig): string[] {
   const out: string[] = [];
+  const before = new Map((prev.packs ?? []).map((p) => [p.id, p.version]));
+  const after = new Map((next.packs ?? []).map((p) => [p.id, p.version]));
+  for (const [id, v] of after) {
+    if (!before.has(id)) out.push(`Installed pack ${id} ${v}`);
+    else if (before.get(id) !== v) out.push(`Upgraded pack ${id} ${before.get(id)} → ${v}`);
+  }
+  for (const id of before.keys()) if (!after.has(id)) out.push(`Removed pack ${id}`);
   diffLayer(prev.company, next.company, out, '');
   const ids = new Set([...Object.keys(prev.orgUnits), ...Object.keys(next.orgUnits)]);
   for (const id of ids) {
@@ -104,6 +118,23 @@ export function withArchivedLeftovers(target: TenantConfig, current: TenantConfi
     }
   };
   keep(result.company, current.company);
+  // Pack entities and fields that the target does not have are kept archived too.
+  const packsOf = (c: TenantConfig) =>
+    mergeLayers([...packLayers(c.packs), ...(c.retired ? [c.retired] : [])]);
+  const targetPacks = packsOf(result);
+  const leftovers = packsOf(current);
+  const retired = normalizeLayer(result.retired ?? emptyLayer());
+  for (const e of leftovers.entities) {
+    const t = targetPacks.entities.find((x) => x.key === e.key);
+    const missing = e.fields.filter((f) => !t?.fields.some((x) => x.key === f.key));
+    if (!missing.length && t) continue;
+    retired.entities.push(
+      t
+        ? { key: e.key, fields: missing.map((f) => ({ ...f, archived: true })) }
+        : { ...e, archived: true, fields: e.fields.map((f) => ({ ...f, archived: true })) },
+    );
+  }
+  if (retired.entities.length) result.retired = retired;
   for (const [id, layer] of Object.entries(current.orgUnits)) {
     if (!result.orgUnits[id])
       result.orgUnits[id] = { ...emptyLayer(), path: layer.path, name: layer.name };

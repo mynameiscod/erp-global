@@ -18,7 +18,7 @@ function ReportDialog({ report, onClose }: { report?: ReportDef; onClose: () => 
   const [d, setD] = useState<Partial<ReportDef>>(
     report ?? { key: '', label: {}, columns: [], filters: [] },
   );
-  const options = usePathOptions(cfg.data, d.entity);
+  const options = usePathOptions(cfg.data, d.entity, d.lines);
   const ok = KEY_RE.test(d.key ?? '') && !!d.entity && Object.values(d.label ?? {}).some(Boolean);
   return (
     <Modal show onHide={onClose} size="xl" scrollable>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Card, Form } from 'react-bootstrap';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { recordPermission } from '@erp/contracts';
@@ -11,16 +11,29 @@ import {
   rulesFor,
   validateRecord,
   workflowFor,
+  type RecordData,
 } from '@erp/metadata';
 import { api, ApiError } from '../api/client';
 import type { OrgUnitDto } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { useEffectiveConfig, useLabel } from '../config/hooks';
 import { ErrorAlert, Loading, PageHeader } from '../components/ui';
+import { defaultFills } from './defaults';
 import { DynamicFields, editableValues, type Values } from './DynamicFields';
 import { PrintMenu } from './PrintMenu';
 import type { RecordDto } from './RecordsListPage';
+import { TaxPanel } from './TaxPanel';
+import { browserTaxContext, previewTaxes, taxSources, unitChain } from './taxPreview';
 import { WorkflowPanel } from './WorkflowPanel';
+
+const ID_RE = /^[a-f0-9]{24}$/;
+
+/** One record by id; shares the cache with the record form. */
+const recordQuery = (entity: string, id: string) => ({
+  queryKey: ['record', entity, id],
+  queryFn: () => api<RecordDto>(`/records/${entity}/${id}`),
+  staleTime: 30_000,
+});
 
 /** The signed-in user's role names and keys, for HAS_ROLE() in form rules. */
 function useMyRoles() {
@@ -58,11 +71,14 @@ export function RecordFormPage() {
   const [error, setError] = useState<unknown>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  /** The form has changes not yet saved; tax figures are then the browser's preview. */
+  const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
     if (record.data) {
       setValues(record.data.data);
       setOrgUnitId(record.data.orgUnitId ?? '');
+      setDirty(false);
     }
   }, [record.data]);
 
@@ -136,6 +152,48 @@ export function RecordFormPage() {
     workflow,
   ]);
 
+  // Linked records the tax inputs read (e.g. the customer's state), for the live preview.
+  const taxLinks = useMemo(
+    () =>
+      taxSources(entity)
+        .map((src) => src.split('.'))
+        .filter(([first, second]) => second !== undefined && first !== 'unit')
+        .map(([first]) => entity?.fields.find((f) => f.key === first))
+        .filter(
+          (f, i, a) =>
+            f?.type === 'lookup' &&
+            !!f.target &&
+            f.target !== 'user' &&
+            f.target !== 'org_unit' &&
+            a.indexOf(f) === i,
+        )
+        .map((f) => ({ key: f!.key, target: f!.target!, id: values[f!.key] }))
+        .filter((l): l is { key: string; target: string; id: string } =>
+          typeof l.id === 'string' ? ID_RE.test(l.id) : false,
+        ),
+    [entity, values],
+  );
+  const taxLinked = useQueries({
+    queries: taxLinks.map((l) => recordQuery(l.target, l.id)),
+  });
+  const taxPreview = useMemo(() => {
+    const shown = formState?.shown ?? values;
+    if (!entity?.tax || !cfg.data) return { values: shown, unresolved: false };
+    const linked = new Map<string, RecordData | null | undefined>(
+      taxLinks.map((l, i) => [l.key, taxLinked[i]?.data?.data]),
+    );
+    const { ctx, unresolved } = browserTaxContext(
+      entity,
+      shown,
+      unitChain(units.data, orgUnitId),
+      linked,
+      cfg.data.tenant.countryCode,
+    );
+    // Saved figures come from the server and are authoritative; preview only while editing.
+    if (!dirty) return { values: shown, unresolved };
+    return { values: previewTaxes(entity, shown, cfg.data.taxes, ctx), unresolved };
+  }, [formState, values, entity, cfg.data, taxLinks, taxLinked, units.data, orgUnitId, dirty]);
+
   if (cfg.isLoading || (!isNew && record.isLoading)) return <Loading />;
   if (!entity || !cfg.data)
     return (
@@ -152,6 +210,23 @@ export function RecordFormPage() {
     !isNew &&
     !formState?.locked &&
     can(recordPermission(key, 'delete'), orgScoped ? unitPath : undefined);
+
+  const change = (k: string, v: unknown) => {
+    setDirty(true);
+    setValues((prev) => ({ ...prev, [k]: v }));
+    // Fields with `defaultFrom` take the chosen record's value right away (the server
+    // does the same on save).
+    for (const fill of defaultFills(
+      entity,
+      values,
+      { ...values, [k]: v },
+      effective.tenant.currency,
+    )) {
+      qc.fetchQuery(recordQuery(fill.target, fill.id))
+        .then((linked) => setValues((prev) => fill.apply(linked.data, prev)))
+        .catch(() => undefined);
+    }
+  };
 
   const save = async () => {
     setError(null);
@@ -182,6 +257,7 @@ export function RecordFormPage() {
       qc.setQueryData(['record', key, res.id], res);
       if (isNew) navigate(`/r/${key}/${res.id}`, { replace: true });
       else setValues(res.data);
+      setDirty(false);
       setSaved(true);
     } catch (e) {
       if (e instanceof ApiError && Object.keys(e.fieldErrors()).length) setErrors(e.fieldErrors());
@@ -272,12 +348,23 @@ export function RecordFormPage() {
                 entity={entity}
                 cfg={effective}
                 currency={effective.tenant.currency}
-                values={formState?.shown ?? values}
+                values={taxPreview.values}
                 errors={errors}
                 hidden={formState?.hidden}
                 readOnly={formState?.readOnly}
                 required={formState?.required}
-                onChange={(k, v) => setValues((prev) => ({ ...prev, [k]: v }))}
+                onChange={change}
+                renderAfter={(k) =>
+                  entity.tax && k === entity.tax.lines ? (
+                    <TaxPanel
+                      cfg={effective}
+                      values={taxPreview.values}
+                      currency={effective.tenant.currency}
+                      preview={dirty}
+                      unresolved={taxPreview.unresolved}
+                    />
+                  ) : null
+                }
               />
             </fieldset>
             <div className="d-flex justify-content-between">

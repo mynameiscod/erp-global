@@ -17,6 +17,7 @@ import { PrintTemplatesTab } from './PrintTemplatesTab';
 import { PicklistsTab } from './PicklistsTab';
 import { RulesTab } from './RulesTab';
 import { SettingsTab } from './SettingsTab';
+import { TaxesTab } from './TaxesTab';
 import { TemplatesTab } from './TemplatesTab';
 import { WorkflowsTab } from './WorkflowsTab';
 import { layerFor, StudioContext } from './StudioContext';
@@ -135,6 +136,7 @@ export function StudioPage() {
     ['entities', 'studio.entities', 'boxes'],
     ['picklists', 'studio.picklists', 'list-ul'],
     ['numbering', 'studio.numbering', '123'],
+    ['taxes', 'studio.taxes.tab', 'percent'],
     ['workflows', 'studio.workflows', 'diagram-2'],
     ['rules', 'studio.rules', 'shield-check'],
     ['automations', 'studio.automations', 'lightning-charge'],
@@ -242,6 +244,7 @@ export function StudioPage() {
         <Route path="entities/:key" element={<EntityEditor />} />
         <Route path="picklists" element={<PicklistsTab />} />
         <Route path="numbering" element={<NumberingTab />} />
+        <Route path="taxes" element={<TaxesTab />} />
         <Route path="workflows" element={<WorkflowsTab />} />
         <Route path="rules" element={<RulesTab />} />
         <Route path="automations" element={<AutomationsTab />} />

@@ -87,6 +87,12 @@ export const EventTypes = {
   ReportExported: 'reports.report.exported',
   ReportScheduleSent: 'reports.schedule.sent',
   ReportShared: 'reports.report.shared',
+
+  PackInstalled: 'packs.pack.installed',
+  PackUpgraded: 'packs.pack.upgraded',
+  PackRemoved: 'packs.pack.removed',
+  PackSamplesAdded: 'packs.samples.added',
+  PackSamplesRemoved: 'packs.samples.removed',
 } as const;
 
 export type EventType = (typeof EventTypes)[keyof typeof EventTypes];

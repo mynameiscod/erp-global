@@ -35,6 +35,11 @@ export class Directory {
       /** Role ids the user holds at `path` or above it; anywhere for company-wide records. */
       idsAt: (path: string) =>
         new Set(list.filter((r) => path === '/' || path.startsWith(r.path)).map((r) => r.roleId)),
+      /** The same, as role keys (pack roles). */
+      keysAt: (path: string) =>
+        new Set(
+          list.filter((r) => r.key && (path === '/' || path.startsWith(r.path))).map((r) => r.key!),
+        ),
     };
   }
 
@@ -110,7 +115,7 @@ export class Directory {
           const path = record.orgPath && record.orgPath !== '/' ? record.orgPath : undefined;
           // Company-wide records: the holders nearest the top of the org tree.
           const res = await this.clients.access.get<{ userIds: string[] }>(
-            `/internal/access/role-holders?roleId=${s.roleId}${path ? `&path=${encodeURIComponent(path)}` : ''}`,
+            `/internal/access/role-holders?${s.roleId ? `roleId=${s.roleId}` : `roleKey=${s.roleKey}`}${path ? `&path=${encodeURIComponent(path)}` : ''}`,
           );
           ids.push(...res.userIds);
           break;

@@ -185,6 +185,9 @@ function checkPrintTemplate(
 
 // ---- reports ----
 
+/** The line-item table of the report being checked (line-item reports). */
+let currentLines: string | undefined;
+
 function resolved(
   all: EntityDef[],
   entity: string,
@@ -192,7 +195,7 @@ function resolved(
   where: string,
   add: Add,
 ): ResolvedPath | undefined {
-  const r = resolveReportPath(all, entity, path);
+  const r = resolveReportPath(all, entity, path, currentLines);
   if (typeof r === 'string') {
     add(where, r);
     return undefined;
@@ -235,6 +238,19 @@ function checkReport(r: ReportDef, all: EntityDef[], add: Add): void {
     add(p, `Unknown entity "${r.entity}"`);
     return;
   }
+  if (r.lines && e.fields.find((f) => f.key === r.lines)?.type !== 'table') {
+    add(`${p}.lines`, `"${r.lines}" is not a table field of ${r.entity}`);
+    return;
+  }
+  currentLines = r.lines;
+  try {
+    checkReportPaths(r, all, p, add);
+  } finally {
+    currentLines = undefined;
+  }
+}
+
+function checkReportPaths(r: ReportDef, all: EntityDef[], p: string, add: Add): void {
   r.columns.forEach((c, i) => resolved(all, r.entity, c.path, `${p}.columns.${i}`, add));
   for (const [i, f] of r.filters.entries()) {
     const where = `${p}.filters.${i}`;

@@ -14,6 +14,7 @@ const services = [
   'workflow',
   'document',
   'reporting',
+  'pack',
 ];
 
 try {

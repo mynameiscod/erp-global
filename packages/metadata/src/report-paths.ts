@@ -29,6 +29,8 @@ export const MAX_REPORT_HOPS = 2;
 
 export interface ResolvedPath {
   path: string;
+  /** Set when the path reads a line item column (line-item reports). */
+  line?: string;
   /** Links followed from the report's entity; each is a lookup to a custom entity. */
   hops: { field: FieldDef; target: string }[];
   /** The entity the final column belongs to. */
@@ -59,9 +61,27 @@ export function resolveReportPath(
   entities: Pick<EntityDef, 'key' | 'kind' | 'fields' | 'label'>[],
   entityKey: string,
   path: string,
+  lines?: string,
 ): ResolvedPath | string {
   const byKey = new Map(entities.map((e) => [e.key, e]));
   const segments = path.split('.');
+  // Line-item reports: `lines.column` is a column of the line.
+  if (lines && segments[0] === lines) {
+    const table = byKey.get(entityKey)?.fields.find((f) => f.key === lines && f.type === 'table');
+    if (!table) return `"${lines}" is not a table field`;
+    const column = table.columns?.find((c) => c.key === segments[1]);
+    if (!column || segments.length !== 2) return `Unknown column "${path}"`;
+    const type = column.type === 'formula' ? (column.resultType ?? 'text') : column.type;
+    return {
+      path,
+      line: lines,
+      hops: [],
+      entity: entityKey,
+      field: column,
+      type,
+      labels: [table.label, column.label],
+    };
+  }
   if (segments.length > MAX_REPORT_HOPS + 1) return `"${path}" follows too many links`;
   let entity = byKey.get(entityKey);
   if (!entity) return `Unknown entity "${entityKey}"`;

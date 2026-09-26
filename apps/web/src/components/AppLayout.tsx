@@ -62,6 +62,7 @@ function SideNav({ onNavigate }: { onNavigate?: () => void }) {
         { to: '/audit', icon: 'journal-check', label: t('nav.audit'), perm: 'audit.event.read' },
         { to: '/settings', icon: 'gear', label: t('nav.settings'), perm: 'tenant.settings.read' },
         { to: '/studio', icon: 'sliders2', label: t('nav.studio'), perm: 'config.read' },
+        { to: '/packs', icon: 'box-seam', label: t('packs.nav'), perm: 'packs.manage' },
       ];
   // Custom entities appear in the menu as soon as they are published.
   const modules: NavItem[] = customEntities(cfg.data)

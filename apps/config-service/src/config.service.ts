@@ -10,6 +10,13 @@ import {
   entityPatchSchema,
   fiscalYearStartFor,
   formLayoutSchema,
+  identifierTypeSchema,
+  installPack,
+  layersFor,
+  packManifestSchema,
+  previewPack,
+  removePack,
+  type PackManifest,
   automationSchema,
   listViewSchema,
   messageTemplateSchema,
@@ -26,10 +33,14 @@ import {
   reportSchema,
   resolveEffective,
   settingsSchema,
+  taxSetupSchema,
   validateTenantConfig,
+  workCalendarSchema,
   withArchivedLeftovers,
   type ConfigLayer,
   type ConfigSettings,
+  type TaxSetup,
+  type WorkCalendar,
   type TenantConfig,
 } from '@erp/metadata';
 import {
@@ -61,6 +72,7 @@ export const KINDS = {
   'print-templates': { list: 'printTemplates', key: 'key', schema: printTemplateSchema },
   reports: { list: 'reports', key: 'key', schema: reportSchema },
   dashboards: { list: 'dashboards', key: 'key', schema: dashboardSchema },
+  'identifier-types': { list: 'identifierTypes', key: 'key', schema: identifierTypeSchema },
 } as const satisfies Record<string, { list: keyof ConfigLayer; key: string; schema: ZodType }>;
 export type Kind = keyof typeof KINDS;
 
@@ -245,8 +257,8 @@ export class ConfigService {
     if (!latest) return BASE()[0].entities.map((e) => ({ key: e.key, kind: e.kind! }));
     const keys = new Map<string, string>();
     for (const layer of [
-      ...BASE(),
-      latest.config.company,
+      // Platform, packs and company (packs sit in between), then every branch override.
+      ...layersFor(BASE(), latest.config),
       ...Object.values(latest.config.orgUnits),
     ]) {
       for (const e of layer.entities)
@@ -366,6 +378,34 @@ export class ConfigService {
     if (!parsed.success) throw AppError.badRequest('Validation failed', parsed.error.issues);
     return this.mutate('company', (layer) => {
       layer.settings = parsed.data as ConfigSettings;
+    });
+  }
+
+  /**
+   * The company's tax data or working calendar. It merges with the packs' by key (taxes)
+   * or by date (holidays), so it holds only what the company adds or changes; `null` clears it.
+   */
+  async putCompanyPart(part: 'taxes' | 'calendar', body: unknown) {
+    this.assertCompany('config.manage');
+    if (
+      body === null ||
+      body === undefined ||
+      (typeof body === 'object' && !Object.keys(body).length)
+    )
+      return this.mutate('company', (layer) => {
+        delete layer[part];
+      });
+    const schema = part === 'taxes' ? taxSetupSchema : workCalendarSchema;
+    const parsed = schema.safeParse(body);
+    if (!parsed.success) {
+      throw AppError.badRequest(
+        'Validation failed',
+        parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+      );
+    }
+    return this.mutate('company', (layer) => {
+      if (part === 'taxes') layer.taxes = parsed.data as TaxSetup;
+      else layer.calendar = parsed.data as WorkCalendar;
     });
   }
 
@@ -491,6 +531,70 @@ export class ConfigService {
       note: note ?? `Rollback to version ${target}`,
       rolledBackFrom: target,
     });
+  }
+
+  // ---- packs (for pack-service) ----
+
+  /** Packs in the draft and in the live version. */
+  async packs() {
+    const [draft, latest] = await Promise.all([this.loadDraft(), this.latest()]);
+    const list = (c?: TenantConfig) =>
+      (c?.packs ?? []).map((p) => ({ id: p.id, version: p.version, installedAt: p.installedAt }));
+    return { draft: list(draft.config), published: list(latest?.config) };
+  }
+
+  async publishedPacks() {
+    return (await this.latest())?.config.packs ?? [];
+  }
+
+  private parseManifest(body: unknown): PackManifest {
+    const parsed = packManifestSchema.safeParse(body);
+    if (!parsed.success) throw AppError.badRequest('Invalid pack', parsed.error.issues);
+    return parsed.data as unknown as PackManifest;
+  }
+
+  async previewPack(body: unknown) {
+    const draft = await this.loadDraft();
+    return previewPack(normalizeTenantConfig(draft.config), this.parseManifest(body));
+  }
+
+  /** Puts a pack (install or upgrade) into the draft; the admin publishes it like any change. */
+  async putPack(body: unknown, resolutions?: Record<string, 'mine' | 'pack'>) {
+    const manifest = this.parseManifest(body);
+    const published = (await this.latest())?.config;
+    return this.mutateConfig((config) => installPack(config, manifest, { published, resolutions }));
+  }
+
+  async removePack(id: string) {
+    const published = (await this.latest())?.config;
+    return this.mutateConfig((config) => {
+      if (!config.packs?.some((p) => p.id === id)) throw AppError.notFound('Installed pack');
+      return removePack(config, id, { published });
+    });
+  }
+
+  /** Replaces the whole draft configuration, retrying if someone else saved at the same moment. */
+  private async mutateConfig(change: (config: TenantConfig) => TenantConfig) {
+    const D = await this.drafts();
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const draft = await this.loadDraft();
+      const config = change(normalizeTenantConfig(structuredClone(draft.config)));
+      const res = await D.updateOne(
+        { rev: draft.rev },
+        {
+          $set: { config, updatedAt: new Date(), updatedBy: requireContext().actor?.id },
+          $inc: { rev: 1 },
+        },
+      );
+      if (res.modifiedCount === 1) {
+        const changes = diffConfigs((await this.latest())?.config ?? emptyTenantConfig(), config);
+        return {
+          changes,
+          packs: (config.packs ?? []).map((p) => ({ id: p.id, version: p.version })),
+        };
+      }
+    }
+    throw AppError.conflict('The draft is being edited by someone else. Please try again.');
   }
 
   // ---- numbering ----

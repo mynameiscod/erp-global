@@ -220,7 +220,7 @@ function PromptInputs({
   return (
     <Row className="g-2 mb-3">
       {prompts.map(({ f, i }) => {
-        const res = resolveReportPath(cfg.data!.entities, report.entity, f.path);
+        const res = resolveReportPath(cfg.data!.entities, report.entity, f.path, report.lines);
         const type = typeof res === 'string' ? 'text' : res.type;
         const field = typeof res === 'string' ? undefined : res.field;
         const list = field?.picklist
@@ -517,7 +517,7 @@ export function MyReportEditor() {
   useEffect(() => {
     if (existing.data) setDef(existing.data.def);
   }, [existing.data]);
-  const options = usePathOptions(cfg.data, def.entity);
+  const options = usePathOptions(cfg.data, def.entity, def.lines);
   if (!cfg.data || (id && existing.isLoading)) return <Loading />;
   const ok = !!def.entity && Object.values(def.label ?? {}).some(Boolean);
   return (

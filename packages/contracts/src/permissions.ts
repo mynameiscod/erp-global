@@ -139,6 +139,13 @@ export const PERMISSIONS = [
     description: 'Export reports to Excel, CSV or PDF and receive scheduled reports',
   },
 
+  {
+    key: 'packs.manage',
+    module: 'packs',
+    scope: 'tenant',
+    description: 'Install, upgrade and remove Country and Industry Packs and their sample data',
+  },
+
   { key: 'audit.event.read', module: 'audit', scope: 'tenant', description: 'View the audit log' },
   {
     key: 'audit.chain.verify',

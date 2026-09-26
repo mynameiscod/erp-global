@@ -18,8 +18,11 @@ import {
   ConditionInput,
   formulaProblem,
   PeopleEditor,
-  useRoles,
+  roleRef,
+  roleValue,
+  useRoleChoices,
 } from './AutomationShared';
+import { PACK_BADGE, useInherited } from './packBase';
 import { useStudio } from './StudioContext';
 
 const APPROVER_KINDS = ['unit_head', 'manager', 'role', 'users', 'field'] as const;
@@ -203,7 +206,12 @@ function ActionEditor({
 }) {
   const { t } = useTranslation();
   const label = useLabel();
-  const roles = useRoles();
+  const roles = useRoleChoices();
+  // Role ids and pack role keys, as one list of select values.
+  const who = [
+    ...(action.roleIds ?? []).map((roleId) => roleValue({ roleId })),
+    ...(action.roleKeys ?? []).map((roleKey) => roleValue({ roleKey })),
+  ];
   const stateKeys = states.map((s) => s.key);
   return (
     <Row className="g-2">
@@ -254,14 +262,33 @@ function ActionEditor({
         <Form.Select
           size="sm"
           multiple
-          value={action.roleIds ?? []}
-          onChange={(e) =>
-            onChange({ ...action, roleIds: [...e.target.selectedOptions].map((o) => o.value) })
-          }
+          value={who}
+          onChange={(e) => {
+            const refs = [...e.target.selectedOptions].map((o) => roleRef(o.value));
+            const roleIds = refs.flatMap((r) => (r.roleId ? [r.roleId] : []));
+            const roleKeys = refs.flatMap((r) => (r.roleKey ? [r.roleKey] : []));
+            onChange({
+              ...action,
+              roleIds: roleIds.length ? roleIds : undefined,
+              roleKeys: roleKeys.length ? roleKeys : undefined,
+            });
+          }}
         >
-          {roles.data?.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.name}
+          {who
+            .filter((v) => !roles.options.some((o) => o.value === v))
+            .map((v) => {
+              const ref = roleRef(v);
+              return (
+                <option key={v} value={v}>
+                  {ref.roleKey
+                    ? t('studio.roles.packRole', { name: roles.nameOf(ref) })
+                    : roles.nameOf(ref)}
+                </option>
+              );
+            })}
+          {roles.options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.pack ? t('studio.roles.packRole', { name: o.name }) : o.name}
             </option>
           ))}
         </Form.Select>
@@ -651,7 +678,17 @@ export function WorkflowsTab() {
   const entities = customEntities(cfg.data);
   const [editing, setEditing] = useState<WorkflowDef | null>(null);
   const [pick, setPick] = useState('');
-  const without = entities.filter((e) => !layer.workflows.some((w) => w.entity === e.key));
+  const { below, packs } = useInherited();
+  // Workflows from the packs (or, in a branch override, the company) that this layer does not
+  // replace: editing one saves this layer's own copy.
+  const inherited = below.workflows.filter(
+    (w) => !layer.workflows.some((x) => x.entity === w.entity),
+  );
+  const rows = [
+    ...layer.workflows.map((w) => ({ w, own: true })),
+    ...inherited.map((w) => ({ w, own: false })),
+  ];
+  const without = entities.filter((e) => !rows.some((r) => r.w.entity === e.key));
 
   return (
     <Card className="shadow-sm border-0">
@@ -679,15 +716,22 @@ export function WorkflowsTab() {
             </Button>
           </div>
         )}
-        {layer.workflows.length === 0 ? (
+        {rows.length === 0 ? (
           <p className="text-body-secondary mb-0">{t('studio.empty')}</p>
         ) : (
           <Table hover size="sm" className="align-middle mb-0">
             <tbody>
-              {layer.workflows.map((w) => (
+              {rows.map(({ w, own }) => (
                 <tr key={w.entity}>
                   <td className="fw-medium">
                     {label(entities.find((e) => e.key === w.entity)?.label) || w.entity}
+                    {!own && (
+                      <Badge {...PACK_BADGE} className="ms-2">
+                        {packs.workflows.some((p) => p.entity === w.entity)
+                          ? t('studio.taxes.fromPack')
+                          : t('studio.company')}
+                      </Badge>
+                    )}
                   </td>
                   <td>
                     {w.states.map((s) => (
@@ -714,7 +758,7 @@ export function WorkflowsTab() {
                     >
                       <i className="bi bi-pencil" />
                     </Button>
-                    {can('config.manage') && (
+                    {own && can('config.manage') && (
                       <Button
                         size="sm"
                         variant="outline-danger"

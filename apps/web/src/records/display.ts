@@ -1,4 +1,10 @@
-import type { CurrencyValue, EffectiveConfig, FieldDef, LocalizedText } from '@erp/metadata';
+import {
+  formatNumber as formatScaled,
+  type CurrencyValue,
+  type EffectiveConfig,
+  type FieldDef,
+  type LocalizedText,
+} from '@erp/metadata';
 import { formatCurrency, formatDate, formatDateTime, formatNumber } from '../lib/format';
 
 export interface DisplayContext {
@@ -9,10 +15,43 @@ export interface DisplayContext {
   titles?: Map<string, string>;
 }
 
+export interface TaxSummaryLine {
+  component: string;
+  rate: number;
+  taxable: number;
+  amount: number;
+}
+
+/** Name of a tax component (CGST, VAT…) from the tax data, or its key. */
+export function taxComponentLabel(key: string, ctx: DisplayContext): string {
+  return ctx.label(ctx.cfg.taxes?.components.find((c) => c.key === key)?.label) || key;
+}
+
+/** Name of the tax rule that applied (e.g. "Intra-state"), or its key. */
+export function taxRuleLabel(key: string, ctx: DisplayContext): string {
+  return ctx.label(ctx.cfg.taxes?.rules.find((r) => r.key === key)?.label) || key;
+}
+
+/** Values the tax engine fills: amounts with their decimals, the rule and summary by name. */
+function taxValue(f: FieldDef, v: unknown, ctx: DisplayContext): string {
+  if (f.key === 'tax_rule') return taxRuleLabel(String(v), ctx);
+  if (f.key === 'tax_summary' && Array.isArray(v))
+    return (v as TaxSummaryLine[])
+      .map(
+        (s) =>
+          `${taxComponentLabel(s.component, ctx)} ${formatScaled(s.rate, ctx.locale)}%: ${formatScaled(s.amount, ctx.locale, 2)}`,
+      )
+      .join(' · ');
+  if (f.type === 'percent') return `${formatScaled(v, ctx.locale)}%`;
+  if (f.type === 'decimal') return formatScaled(v, ctx.locale, f.scale ?? 2);
+  return String(v);
+}
+
 /** A field value as plain text for lists and read-only views. */
 export function displayValue(f: FieldDef | undefined, v: unknown, ctx: DisplayContext): string {
   if (v === undefined || v === null || v === '') return '';
   if (!f) return String(v);
+  if (f.calculated === 'tax') return taxValue(f, v, ctx);
   switch (f.type) {
     case 'currency': {
       const c = v as CurrencyValue;
