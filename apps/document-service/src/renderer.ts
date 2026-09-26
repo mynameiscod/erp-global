@@ -10,6 +10,7 @@ import {
   parseTemplate,
   pickText,
   renderTemplate,
+  SYSTEM_LABELS,
   THERMAL_WIDTH_MM,
   workflowFor,
   type EffectiveConfig,
@@ -440,7 +441,14 @@ export class DocumentRenderer {
           .map((i) => {
             const [first] = i.path.split('.');
             const f = this.field(rec.entity, first);
-            const label = i.label ? this.label(i.label) : f ? this.label(f.label) : i.path;
+            const system = (SYSTEM_LABELS as Record<string, LocalizedText>)[first];
+            const label = i.label
+              ? this.label(i.label)
+              : f
+                ? this.label(f.label)
+                : system
+                  ? this.label(system)
+                  : i.path;
             return `<div class="fld"><span class="lbl">${escapeHtml(label)}</span><span class="val">${escapeHtml(scope.text(i.path, i.format))}</span></div>`;
           })
           .join('');
@@ -606,9 +614,11 @@ ${t.mode === 'html' ? (t.css ?? '') : ''}`;
           footerTemplate,
         };
     const scope = this.scope(rec, rec.entity);
+    // Records without a number are named by the end of their id, not "Receipt-.pdf".
+    const ref = rec.number ?? rec.id.slice(-6);
     const name = t.fileName
-      ? this.plainFill(t.fileName, scope)
-      : `${pickText(t.label, this.lang)}-${rec.number ?? rec.id}`;
+      ? this.plainFill(t.fileName.replace(/\{\{\s*number\s*\}\}/g, ref), scope)
+      : `${pickText(t.label, this.lang)}-${ref}`;
     return {
       pages,
       pdf,

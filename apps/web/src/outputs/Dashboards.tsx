@@ -74,10 +74,18 @@ function KpiWidget({
       {prev !== undefined && (
         <div className={`small ${value >= prev ? 'text-success' : 'text-danger'}`}>
           <i className={`bi bi-caret-${value >= prev ? 'up' : 'down'}-fill me-1`} />
-          {change === undefined ? t('dashboards.fromZero') : `${Math.abs(change).toFixed(1)}%`}{' '}
-          <span className="text-body-secondary">
-            {t('dashboards.vsPrevious', { value: formatCell(data.column, prev, format) || '0' })}
-          </span>
+          {change === undefined ? (
+            t('dashboards.fromZero')
+          ) : (
+            <>
+              {`${Math.abs(change).toFixed(1)}%`}{' '}
+              <span className="text-body-secondary">
+                {t('dashboards.vsPrevious', {
+                  value: formatCell(data.column, prev, format) || '0',
+                })}
+              </span>
+            </>
+          )}
         </div>
       )}
     </div>

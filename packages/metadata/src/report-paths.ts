@@ -13,10 +13,11 @@ export const SYSTEM_COLUMN_TYPES: Record<SystemColumn, string> = {
   orgUnitId: 'org_unit',
 };
 
-const SYSTEM_LABELS: Record<SystemColumn, LocalizedText> = {
-  number: { en: 'Number' },
-  status: { en: 'Status' },
-  createdAt: { en: 'Created' },
+/** Names of the system columns, for reports and printed documents. */
+export const SYSTEM_LABELS: Record<SystemColumn, LocalizedText> = {
+  number: { en: 'Number', hi: 'संख्या', te: 'సంఖ్య', ar: 'الرقم' },
+  status: { en: 'Status', hi: 'स्थिति', te: 'స్థితి', ar: 'الحالة' },
+  createdAt: { en: 'Created', hi: 'बनाया गया', te: 'సృష్టించబడింది', ar: 'تاريخ الإنشاء' },
   updatedAt: { en: 'Updated' },
   createdBy: { en: 'Created by' },
   updatedBy: { en: 'Updated by' },

@@ -880,7 +880,7 @@
     "clear": "مسح التواريخ",
     "allUnits": "كل الوحدات",
     "vsPrevious": "مقابل {{value}} سابقًا",
-    "fromZero": "بعد أن كان صفرًا",
+    "fromZero": "جديد في هذه الفترة",
     "waitingForYou": "بانتظارك",
     "widget": {
       "kpi": "رقم (مؤشر)",

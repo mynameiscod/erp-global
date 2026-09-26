@@ -880,7 +880,7 @@
     "clear": "तारीखें हटाएँ",
     "allUnits": "सभी इकाइयाँ",
     "vsPrevious": "पहले {{value}} की तुलना में",
-    "fromZero": "शून्य से बढ़कर",
+    "fromZero": "इस अवधि में नया",
     "waitingForYou": "आपकी प्रतीक्षा में",
     "widget": {
       "kpi": "संख्या (KPI)",

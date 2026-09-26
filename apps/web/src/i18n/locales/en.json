@@ -880,7 +880,7 @@
     "clear": "Clear dates",
     "allUnits": "All units",
     "vsPrevious": "vs {{value}} before",
-    "fromZero": "up from nothing",
+    "fromZero": "new this period",
     "waitingForYou": "waiting for you",
     "widget": {
       "kpi": "Number (KPI)",
