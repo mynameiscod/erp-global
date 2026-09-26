@@ -1,6 +1,6 @@
 # Step 5: Print templates, reports and dashboards
 
-> Status: **Approved** by the owner on 2026-09-26, including the five points in section 7. Implementation in progress.
+> Status: **Implemented.** The owner approved this design on 2026-09-26, including the five points in section 7. Section 8 lists what differs from the design and the known limits.
 > Date: 2026-09-25. Builds on [architecture.md](architecture.md), [step-2-config-engine.md](step-2-config-engine.md) and [step-4-workflows-rules.md](step-4-workflows-rules.md).
 
 ## 1. Decisions from the owner
@@ -160,8 +160,61 @@ As in Step 4, these are built by the automated acceptance test. Ready-to-install
 
 ## 7. Owner decisions (confirmed)
 
-1. **Two new services**: `document-service` (PDFs, with Chromium, about 300–500 MB RAM) and `reporting-service` (personal reports, dashboards, exports, schedules). Alternative: put reporting into records-service, to save one service on the VPS.
+1. **Two new services**: `document-service` (PDFs, with Chromium, about 300–500 MB RAM) and `reporting-service` (personal reports, dashboards, exports, schedules).
 2. **Add the `table` field type** (line items) in this step, as in section 3.2. Invoices and quotations need it.
 3. **Scheduled reports run with each recipient's own access**, not the sender's. This is safer, but a report sent to many branches runs once per branch.
 4. **Charts with AG Charts Community** (free), to match AG Grid.
 5. **Audit**: exports, emailed PDFs and scheduled reports are audited; on-screen printing is not, unless a company turns it on per entity.
+
+## 8. Implementation notes and known limits
+
+### What differs from the design
+
+- **Scheduled reports** run in reporting-service's own worker, not in workflow-service. It uses the same leased-job pattern, so several replicas never send the same schedule twice.
+- **Audit of on-screen printing** is switched on per print template ("Record every print in the audit log"), not per entity.
+- **Amounts in words** are in English, with the number system of the currency: lakh and crore for INR, PKR, NPR, LKR and BDT; million and billion for the others. Words in other languages come with the Country Packs.
+- **Letterhead values** come from the org tree: `{{company.…}}` is the top unit (with the company name), `{{unit.…}}` is the record's own unit. Custom fields added to org units in the Studio (address, GSTIN, phone) can be printed, e.g. `{{unit.address}}`.
+- **Linked records in reports** need permission to read the linked entity. A report showing `student.class.name` refuses to run for someone who cannot read students. Printed documents show linked and related records as the template's author chose, like any invoice shows the customer's name.
+- **Drill-down** lists the records behind a number (click a group, a pivot cell or a bar) through the same report, so it needs no extra permission.
+- **Excel and CSV** exports hold up to 100,000 rows; **PDF** exports up to 5,000 rows, because a PDF is for reading, not data.
+
+### How it is built
+
+| Part                                                                                                                                                                                  | Where                                                                                                                              |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Table fields, column aggregates (`SUM(lines.amount)`), print, report and dashboard definitions, validation, placeholders, relative dates and buckets, formatting and amounts in words | `packages/metadata` (`print.ts`, `reports.ts`, `report-paths.ts`, `dashboards.ts`, `dates.ts`, `format.ts`, `validate-outputs.ts`) |
+| Report engine (rows, groups with subtotals, pivot, linked records up to two hops, prompts, date ranges, drill-down), document data                                                    | `records-service` (`report-engine.ts`, `document-data.ts`, internal `/internal/outputs/…`)                                         |
+| Templates to HTML, headless Chromium, bundled Noto fonts, copies, merged PDFs, QR codes and barcodes, previews, email, automation output, report tables                               | `document-service` (new, port 3012, database `erp_document`)                                                                       |
+| Company and personal reports, sharing, exports, schedules, dashboards and widget cache                                                                                                | `reporting-service` (new, port 3013, database `erp_reporting`)                                                                     |
+| Email with attachments (`notify.mail.send`)                                                                                                                                           | `notification-service`                                                                                                             |
+| Byte upload and download between services                                                                                                                                             | `file-service` (`/internal/files/bytes`)                                                                                           |
+| The "document" automation action                                                                                                                                                      | `workflow-service`                                                                                                                 |
+| `$lookup` allowed only when its pipeline matches the current tenant                                                                                                                   | `packages/tenancy`                                                                                                                 |
+| Studio tabs (print, reports, dashboards), Reports pages, home dashboards, table input, print menu                                                                                     | `apps/web`                                                                                                                         |
+
+- **Access.** reporting-service and document-service pass the viewer's access list to records-service with every request; records-service applies it to each query and join. Scheduled reports look up each recipient's access and group recipients with the same access, so the report runs once per group.
+- **PDFs.** Chromium starts on the first render, runs at most two renders at a time (`RENDER_CONCURRENCY`), restarts after 200 renders, and has scripts off and every network request refused. Images (logos, signatures) are fetched from file-service first and embedded.
+- **Fonts.** Noto Sans for Latin (with the rupee sign), Devanagari, Bengali, Gurmukhi, Gujarati, Tamil, Telugu, Kannada, Malayalam and Arabic are bundled; only the scripts a document uses are embedded in it.
+
+### Configuration
+
+| Service              | Settings                                                                                                                                                                   |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| document-service     | `MONGO_PASSWORD_DOCUMENT` (new database user), `CHROMIUM_PATH` (`/usr/bin/chromium` in the image), `RENDER_CONCURRENCY` (default 2), `BROWSER_RECYCLE_AFTER` (default 200) |
+| reporting-service    | `MONGO_PASSWORD_REPORTING` (new database user), `SCHEDULER_INTERVAL_MS` (default 15000)                                                                                    |
+| notification-service | `FILE_SERVICE_URL` for attachments                                                                                                                                         |
+| workflow-service     | `DOCUMENT_SERVICE_URL` for the "document" action                                                                                                                           |
+
+Existing servers: add `MONGO_PASSWORD_DOCUMENT` and `MONGO_PASSWORD_REPORTING` to `.env.production` before `docker compose up`; `mongo-init` then creates the two database users.
+
+### Known limits
+
+| Area                                 | Behaviour today                                                                                    | Planned                                                 |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| Amounts in words                     | English only                                                                                       | Hindi, Telugu, Arabic and others with the Country Packs |
+| Reports on line items                | Reports cover an entity's records, not the rows of its table fields                                | Item-wise reports (one row per line item)               |
+| Mixed currencies                     | Sums add amounts as numbers; a report mixing currencies needs a currency filter                    | Totals per currency                                     |
+| Branch overrides of reports          | Reports and dashboards run with the company definitions; branch overrides apply to print templates | Per-branch report definitions                           |
+| Dashboard cache                      | Per reporting-service instance, 5 minutes                                                          | Shared cache (Redis) when running several replicas      |
+| Letterhead for company-wide entities | Records without an org unit print the company name only                                            | A company profile (address, tax numbers) in settings    |
+| Report size                          | Reports run on the live database with a 10-second limit (60 seconds for exports)                   | An analytics store for very large data                  |
